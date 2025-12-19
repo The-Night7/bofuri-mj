@@ -1,0 +1,52 @@
+{
+  "entities": [
+    {
+      "name": "PJ — Exemple Guerrier",
+      "kind": "PJ",
+      "level": 10,
+      "hp_max": 300,
+      "mp_max": 50,
+      "STR": 35,
+      "AGI": 12,
+      "INT": 5,
+      "DEX": 10,
+      "VIT": 25
+    },
+    {
+      "name": "Lapin végétal (Lvl 1)",
+      "kind": "Mob",
+      "level": 1,
+      "hp_max": 10,
+      "mp_max": 5,
+      "STR": 3,
+      "AGI": 8,
+      "INT": 2,
+      "DEX": 5,
+      "VIT": 2
+    },
+    {
+      "name": "BEE ME ME BEE (Lvl 10)",
+      "kind": "Mob",
+      "level": 10,
+      "hp_max": 50,
+      "mp_max": 30,
+      "STR": 15,
+      "AGI": 25,
+      "INT": 8,
+      "DEX": 20,
+      "VIT": 10
+    },
+    {
+      "name": "Hydre au poison (Lvl 15)",
+      "kind": "Boss",
+      "level": 15,
+      "hp_max": 1500,
+      "mp_max": 200,
+      "STR": 60,
+      "AGI": 20,
+      "INT": 45,
+      "DEX": 30,
+      "VIT": 80
+    }
+  ]
+}
