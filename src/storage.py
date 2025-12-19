@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -77,9 +78,32 @@ def save_encounter(state: EncounterState) -> None:
 
 
 def load_encounter(encounter_id: str) -> EncounterState:
+  """
+  Version stricte (comme avant) : lève si fichier absent.
+  """
   p = encounter_path(encounter_id)
   raw = json.loads(p.read_text(encoding="utf-8"))
   return EncounterState.from_dict(raw)
+
+
+def load_encounter_safe(encounter_id: str) -> EncounterState:
+  """
+  Version robuste : si absent => crée un encounter vide avec cet id.
+  """
+  p = encounter_path(encounter_id)
+  if not p.exists():
+    st = EncounterState.new(encounter_id=encounter_id)  # nécessite EncounterState.new dans models.py
+    save_encounter(st)
+    return st
+  return load_encounter(encounter_id)
+def new_encounter() -> EncounterState:
+  """
+  Crée un nouvel encounter avec id unique, persiste et renvoie l'état.
+  """
+  encounter_id = str(uuid.uuid4())[:8]
+  st = EncounterState.new(encounter_id=encounter_id)  # nécessite EncounterState.new dans models.py
+  save_encounter(st)
+  return st
 
 
 def list_encounters() -> List[str]:

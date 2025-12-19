@@ -408,3 +408,16 @@ def load_compendium(bestiaire_md: str, skills_md_list: List[str]) -> Compendium:
       key = _safe_key(v.name, skills)
       skills[key] = v
   return Compendium(monsters=monsters, skills=skills)
+
+
+def build_compendium_from_docs(docs_dir: Path) -> Compendium:
+  """
+  Compat app.py:
+  - docs_dir contient Bestiaire.md + palier1.md .. palier6.md
+  """
+  docs_dir = Path(docs_dir)
+
+  bestiaire_path = docs_dir / "Bestiaire.md"
+  skill_paths: List[Path] = [docs_dir / f"palier{i}.md" for i in range(1, 7)]
+
+  return build_compendium_from_md(bestiaire_path=bestiaire_path, skill_paths=skill_paths)
