@@ -1,0 +1,5 @@
+{
+  "vit_divisor_default": 100.0,
+  "docs_dir": "docs",
+  "compendium_path": "data/compendium.json"
+}

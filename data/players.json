@@ -1,0 +1,17 @@
+{
+  "players": [
+    {
+      "name": "PJ — Exemple Guerrier",
+      "level": 10,
+      "hp_max": 300.0,
+      "mp_max": 50.0,
+      "STR": 35.0,
+      "AGI": 12.0,
+      "INT": 5.0,
+      "DEX": 10.0,
+      "VIT": 25.0,
+      "hp": 300.0,
+      "mp": 50.0
+    }
+  ]
+}
