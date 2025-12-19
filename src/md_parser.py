@@ -130,50 +130,60 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
       continue
 
     sm = STAT_LINE_RE.match(line)
-    if sm and current_level is not None and current.variants and current_level in current.variants:
+    if sm:
       key = sm.group("key").strip().lower()
       val = sm.group("val").strip()
-      v = current.variants[current_level]
 
-      if key == "hp":
-        try:
-          v.hp_max = float(val.split("/")[1])
-        except Exception:
-          pass
+      # Si on n'est pas dans un bloc "**Niveau X:**", on crée une variante implicite
+      if current_level is None:
+        current_level = _ensure_implicit_variant(current)
+
+      if current.variants and current_level in current.variants:
+        v = current.variants[current_level]
+
+        # HP / MP format "10/10"
+        if key == "hp":
+          try:
+            v.hp_max = float(val.split("/")[1])
+          except Exception:
+            pass
+          continue
+        if key == "mp":
+          try:
+            v.mp_max = float(val.split("/")[1])
+          except Exception:
+            pass
+          continue
+
+        # Stats
+        if key in ["str", "agi", "int", "dex", "vit"]:
+          try:
+            setattr(v, key.upper(), float(val))
+          except Exception:
+            pass
+          continue
+
+        # Attaque de base
+        if "attaque de base" in key:
+          try:
+            v.base_attack = float(re.findall(r"[\d\.]+", val)[0])
+          except Exception:
+            v.base_attack = None
+          continue
+
+        # Drop / Zone (métadonnées du monstre, pas de la variante)
+        if key == "drop":
+          current.drops = [x.strip() for x in val.split(",") if x.strip()]
+          continue
+
+        if key == "zone":
+          current.zone = val
+          continue
+
+        # Autres lignes -> extra
+        v.extra = v.extra or {}
+        v.extra[key] = val
         continue
-
-      if key == "mp":
-        try:
-          v.mp_max = float(val.split("/")[1])
-        except Exception:
-          pass
-        continue
-
-      if key in ["str", "agi", "int", "dex", "vit"]:
-        try:
-          setattr(v, key.upper(), float(val))
-        except Exception:
-          pass
-        continue
-
-      if "attaque de base" in key:
-        try:
-          v.base_attack = float(re.findall(r"[\d\.]+", val)[0])
-        except Exception:
-          v.base_attack = None
-        continue
-
-      if key == "drop":
-        current.drops = [x.strip() for x in val.split(",") if x.strip()]
-        continue
-
-      if key == "zone":
-        current.zone = val
-        continue
-
-      v.extra = v.extra or {}
-      v.extra[key] = val
-      continue
 
     # Drop/Zone parfois placés dans "abilities" (chez toi on voit Drop/Zone listés)
     sm2 = STAT_LINE_RE.match(line)
@@ -202,6 +212,52 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
 # ----------------------------
 # Variants densification (min -> max)
 # ----------------------------
+
+def _infer_default_level(level_range: Optional[str]) -> int:
+  """
+  level_range vient de l'en-tête, ex:
+  - "3"
+  - "1-10"
+  - "Lvl 3" (normalement déjà nettoyé)
+  """
+  if not level_range:
+    return 1
+  s = str(level_range).strip().lower().replace("lvl", "").strip()
+  # "1-10" -> 1
+  if "-" in s:
+    left = s.split("-", 1)[0].strip()
+    try:
+      return int(left)
+    except Exception:
+      return 1
+  # "3" -> 3
+  try:
+    return int(s)
+  except Exception:
+    return 1
+
+
+def _ensure_implicit_variant(current: Monster) -> int:
+  """
+  Crée une variante implicite au niveau déduit de l'en-tête si aucune variante
+  n'existe encore. Retourne le niveau créé/utilisé.
+  """
+  if current.variants is None:
+    current.variants = {}
+
+  if current.variants:
+    # si déjà des variantes, on n'écrase rien: on choisit la plus petite existante
+    return sorted(current.variants.keys())[0]
+
+  lvl = _infer_default_level(current.level_range)
+  current.variants[lvl] = MonsterVariant(
+    level=lvl,
+    hp_max=0, mp_max=0, STR=0, AGI=0, INT=0, DEX=0, VIT=0,
+    base_attack=None,
+    extra={}
+  )
+  return lvl
+
 
 def densify_variants(variants: Dict[int, MonsterVariant]) -> Dict[int, MonsterVariant]:
   """
