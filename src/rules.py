@@ -1,12 +1,23 @@
-from typing import Dict, Any
+from typing import Dict, Any, Literal
 from .models import RuntimeEntity
 
+AttackType = Literal["phys", "magic", "ranged"]
+
+def _attack_stat(attacker: RuntimeEntity, attack_type: AttackType) -> float:
+  if attack_type == "phys":
+    return float(attacker.STR)
+  if attack_type == "magic":
+    return float(attacker.INT)
+  if attack_type == "ranged":
+    return float(attacker.DEX)
+  raise ValueError(f"Unknown attack_type: {attack_type}")
 
 def resolve_attack(
   attacker: RuntimeEntity,
   defender: RuntimeEntity,
   roll_a: float,
   roll_b: float,
+  attack_type: AttackType = "phys",
   perce_armure: bool = False,
   vit_scale_div: float = 100.0
 ) -> Dict[str, Any]:
@@ -16,16 +27,20 @@ def resolve_attack(
     "hit": False,
     "roll_a": float(roll_a),
     "roll_b": float(roll_b),
+    "attack_type": attack_type,
     "perce_armure": bool(perce_armure),
     "vit_scale_div": float(vit_scale_div),
     "raw": {},
     "effects": [],
   }
 
+  atk = _attack_stat(attacker, attack_type)
+  out["atk_stat"] = atk
+
   if roll_a > roll_b:
     out["hit"] = True
 
-    dmg = (roll_a - roll_b) + attacker.STR
+    dmg = (roll_a - roll_b) + atk
     if not perce_armure:
       dmg -= vit_term
     dmg = max(0.0, float(dmg))
@@ -37,7 +52,7 @@ def resolve_attack(
     out["effects"].append(f"PV {defender.name}: {defender.hp:.2f}/{defender.hp_max:.2f}")
     return out
 
-  defense = (roll_b - roll_a) + vit_term - attacker.STR
+  defense = (roll_b - roll_a) + vit_term - atk
   out["raw"]["defense_value"] = float(defense)
 
   if defense > 0:
