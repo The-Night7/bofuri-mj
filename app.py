@@ -18,7 +18,7 @@ from src.ui import (
   render_action_panel,
   render_log_panel,
 )
-from src.rules import resolve_action
+from src.rules import resolve_attack as resolve_action
 
 
 def _build_from_docs(docs_dir: Path):
