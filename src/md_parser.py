@@ -14,17 +14,20 @@ def build_compendium_from_docs(docs_dir: str) -> Compendium:
   monsters: Dict[str, Monster] = {}
   skills: Dict[str, Skill] = {}
 
-  # ---- Bestiaire
   bestiary_path = d / "Bestiaire.md"
   if bestiary_path.exists():
     monsters.update(parse_bestiaire(bestiary_path))
 
-  # ---- Skills (priorité tout.md si présent)
+    # Compléter les niveaux manquants (progressif min→max)
+    for m in monsters.values():
+      if m.variants:
+        m.variants = densify_variants(m.variants)
+
+  # Skills
   skills_sources = []
   if (d / "tout.md").exists():
     skills_sources.append(d / "tout.md")
   else:
-    # fallback : palier1..6 si tout.md absent
     for i in range(1, 7):
       p = d / f"palier{i}.md"
       if p.exists():
@@ -37,9 +40,10 @@ def build_compendium_from_docs(docs_dir: str) -> Compendium:
 
 
 # ----------------------------
-# BESTIAIRE PARSER
+# BESTIAIRE PARSER (avec Palier)
 # ----------------------------
 
+PALIER_RE = re.compile(r"^##\s+.*PALIER\s+(?P<p>\d+).*$", re.IGNORECASE)
 MONSTER_HEADER_RE = re.compile(
   r"^###\s+\*\*(?P<name>.+?)\*\*\s*\((?P<lvl>Lvl\s*[^)]+)\)\s*(?P<rest>.*)$",
   re.IGNORECASE
@@ -55,10 +59,11 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
   monsters: Dict[str, Monster] = {}
   current: Optional[Monster] = None
   current_level: Optional[int] = None
+  current_palier: Optional[str] = None
 
   in_skills_list = False
 
-  def ensure_current_variants():
+  def ensure_variants():
     nonlocal current
     if current is not None and current.variants is None:
       current.variants = {}
@@ -66,11 +71,15 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
   for raw in lines:
     line = raw.strip()
 
-    # Nouveau monstre
+    pm = PALIER_RE.match(line)
+    if pm:
+      current_palier = f"Palier {pm.group('p')}"
+      continue
+
     m = MONSTER_HEADER_RE.match(line)
     if m:
       name = m.group("name").strip()
-      lvl_raw = m.group("lvl").strip()  # ex "Lvl 1-10" ou "Lvl 10"
+      lvl_raw = m.group("lvl").strip()
       rest = (m.group("rest") or "").strip()
 
       rarity = None
@@ -81,6 +90,7 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
 
       current = Monster(
         name=name,
+        palier=current_palier,
         level_range=lvl_raw.replace("Lvl", "").strip(),
         rarity=rarity,
         zone=None,
@@ -96,11 +106,10 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
     if current is None:
       continue
 
-    # Début bloc Niveau X
     lm = LEVEL_BLOCK_RE.match(line)
     if lm:
       current_level = int(lm.group("lvl"))
-      ensure_current_variants()
+      ensure_variants()
       current.variants[current_level] = MonsterVariant(
         level=current_level,
         hp_max=0, mp_max=0, STR=0, AGI=0, INT=0, DEX=0, VIT=0,
@@ -110,45 +119,36 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
       in_skills_list = False
       continue
 
-    # Entrée "Compétences:"
     if line.lower().startswith("- **compétences:**") or line.lower().startswith("**compétences:**") or line.lower().startswith("compétences:"):
       in_skills_list = True
       continue
 
-    # Liste de compétences indentée
     if in_skills_list and (line.startswith("- **") or line.startswith("- ")):
-      # Exemple: - **Cri de la reine:** Quand PV...
-      # ou - **Dard empoisonné:** 30/tour
-      # On garde la ligne "propre"
       cleaned = re.sub(r"^\-\s*", "", line).strip()
       current.abilities = current.abilities or []
       current.abilities.append(cleaned)
       continue
 
-    # Ligne de stat générique
     sm = STAT_LINE_RE.match(line)
     if sm and current_level is not None and current.variants and current_level in current.variants:
       key = sm.group("key").strip().lower()
       val = sm.group("val").strip()
       v = current.variants[current_level]
 
-      # HP / MP format "10/10"
       if key == "hp":
         try:
-          hpmax = float(val.split("/")[1])
-          v.hp_max = hpmax
-        except Exception:
-          pass
-        continue
-      if key == "mp":
-        try:
-          mpmax = float(val.split("/")[1])
-          v.mp_max = mpmax
+          v.hp_max = float(val.split("/")[1])
         except Exception:
           pass
         continue
 
-      # Stats
+      if key == "mp":
+        try:
+          v.mp_max = float(val.split("/")[1])
+        except Exception:
+          pass
+        continue
+
       if key in ["str", "agi", "int", "dex", "vit"]:
         try:
           setattr(v, key.upper(), float(val))
@@ -156,7 +156,6 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
           pass
         continue
 
-      # Attaque de base
       if "attaque de base" in key:
         try:
           v.base_attack = float(re.findall(r"[\d\.]+", val)[0])
@@ -164,24 +163,19 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
           v.base_attack = None
         continue
 
-      # Drop / Zone
       if key == "drop":
-        # "Herbes fraîches, Bois sec"
-        drops = [x.strip() for x in val.split(",") if x.strip()]
-        current.drops = drops
+        current.drops = [x.strip() for x in val.split(",") if x.strip()]
         continue
 
       if key == "zone":
         current.zone = val
         continue
 
-      # Autres lignes (ex: "Crachat de poison: 15/tour")
-      # On stocke dans extra
       v.extra = v.extra or {}
       v.extra[key] = val
       continue
 
-    # Drop/Zone hors bloc niveau (rare) : on tente quand même
+    # Drop/Zone parfois placés dans "abilities" (chez toi on voit Drop/Zone listés)
     sm2 = STAT_LINE_RE.match(line)
     if sm2 and current_level is None:
       key = sm2.group("key").strip().lower()
@@ -192,20 +186,60 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
         current.zone = val
       continue
 
-    # fin implicite de compétences si ligne vide
     if in_skills_list and line == "":
       in_skills_list = False
 
-  # Nettoyage: enlever variantes vides
-  for m in monsters.values():
-    if m.variants:
-      for lvl, v in list(m.variants.items()):
-        if v.hp_max == 0 and v.mp_max == 0 and v.STR == 0 and v.VIT == 0:
-          # on garde quand même si extra présent
-          if not v.extra:
-            del m.variants[lvl]
+  # nettoyage
+  for mon in monsters.values():
+    if mon.variants:
+      for lvl, v in list(mon.variants.items()):
+        if v.hp_max == 0 and v.mp_max == 0 and v.STR == 0 and v.VIT == 0 and not v.extra:
+          del mon.variants[lvl]
 
   return monsters
+
+
+# ----------------------------
+# Variants densification (min -> max)
+# ----------------------------
+
+def densify_variants(variants: Dict[int, MonsterVariant]) -> Dict[int, MonsterVariant]:
+  """
+  Si on a (lvl 1) et (lvl 5), crée lvl 2,3,4 par interpolation linéaire.
+  Les champs extra: repris du plus proche niveau inférieur.
+  """
+  lvls = sorted(variants.keys())
+  if len(lvls) < 2:
+    return variants
+
+  def lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+  dense: Dict[int, MonsterVariant] = {}
+  for i in range(len(lvls) - 1):
+    l1, l2 = lvls[i], lvls[i + 1]
+    v1, v2 = variants[l1], variants[l2]
+    span = l2 - l1
+    for l in range(l1, l2):
+      if l == l1:
+        dense[l] = v1
+        continue
+      t = (l - l1) / span
+      dense[l] = MonsterVariant(
+        level=l,
+        hp_max=lerp(v1.hp_max, v2.hp_max, t),
+        mp_max=lerp(v1.mp_max, v2.mp_max, t),
+        STR=lerp(v1.STR, v2.STR, t),
+        AGI=lerp(v1.AGI, v2.AGI, t),
+        INT=lerp(v1.INT, v2.INT, t),
+        DEX=lerp(v1.DEX, v2.DEX, t),
+        VIT=lerp(v1.VIT, v2.VIT, t),
+        base_attack=lerp(v1.base_attack or 0.0, v2.base_attack or 0.0, t) if (v1.base_attack is not None or v2.base_attack is not None) else None,
+        extra=v1.extra or {}
+      )
+    dense[l2] = v2
+
+  return {lvl: dense[lvl] for lvl in sorted(dense.keys())}
 
 
 # ----------------------------
@@ -215,7 +249,7 @@ def parse_bestiaire(path: Path) -> Dict[str, Monster]:
 SKILL_TITLE_RE = re.compile(r"^####\s+\*\*(?P<name>.+?)\*\*\s*$")
 FIELD_RE = re.compile(r"^\-\s+\*\*(?P<key>[^*]+)\:\*\*\s*(?P<val>.+?)\s*$")
 CATEGORY_RE = re.compile(r"^###\s+.+\*\*(?P<cat>.+?)\*\*.*$")
-PALIER_RE = re.compile(r"^##\s+.*PALIER\s+(?P<p>\d+).*$", re.IGNORECASE)
+PALIER_SK_RE = re.compile(r"^##\s+.*PALIER\s+(?P<p>\d+).*$", re.IGNORECASE)
 
 
 def parse_skills(path: Path) -> Dict[str, Skill]:
@@ -232,7 +266,7 @@ def parse_skills(path: Path) -> Dict[str, Skill]:
     if not line:
       continue
 
-    pm = PALIER_RE.match(line)
+    pm = PALIER_SK_RE.match(line)
     if pm:
       current_palier = f"Palier {pm.group('p')}"
       continue
@@ -261,11 +295,6 @@ def parse_skills(path: Path) -> Dict[str, Skill]:
       elif "condition" in k:
         current.condition = v
       else:
-        # fallback: concat dans description
-        if current.description:
-          current.description += f" | {fm.group('key')}: {v}"
-        else:
-          current.description = f"{fm.group('key')}: {v}"
-      continue
+        current.description = (current.description + " | " if current.description else "") + f"{fm.group('key')}: {v}"
 
   return skills

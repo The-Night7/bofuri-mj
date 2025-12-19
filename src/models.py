@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, asdict, field
+from typing import Dict, Any, Optional, List, Literal
+import time
+import uuid
 
+
+# ----------------------------
+# Runtime combat entities
+# ----------------------------
 
 @dataclass
 class RuntimeEntity:
-  # Entité "en combat" (PJ ou Monstre variante). Pour les monstres: pas persistée.
   name: str
   kind: str  # "PJ" | "Mob" | "Boss"
   level: int
@@ -23,16 +28,21 @@ class RuntimeEntity:
   hp: float
   mp: float
 
-  # infos bestiaire (affichage + MJ)
+  # Infos bestiaire / MJ
   base_attack: Optional[float] = None
   zone: Optional[str] = None
   drops: Optional[List[str]] = None
   abilities: Optional[List[str]] = None
+  extra: Optional[Dict[str, Any]] = None  # poison/tour etc.
 
   def reset(self) -> None:
     self.hp = float(self.hp_max)
     self.mp = float(self.mp_max)
 
+
+# ----------------------------
+# Persistent players
+# ----------------------------
 
 @dataclass
 class Player:
@@ -84,6 +94,10 @@ class Player:
     return asdict(self)
 
 
+# ----------------------------
+# Compendium (bestiaire + skills)
+# ----------------------------
+
 @dataclass
 class MonsterVariant:
   level: int
@@ -95,20 +109,18 @@ class MonsterVariant:
   DEX: float
   VIT: float
   base_attack: Optional[float] = None
-
-  # Certaines variantes ont des lignes particulières (poison/tour etc.)
   extra: Optional[Dict[str, Any]] = None
 
 
 @dataclass
 class Monster:
   name: str
-  level_range: Optional[str] = None  # ex: "1-10" si présent
-  rarity: Optional[str] = None       # ex: "Monstre Rare"
+  palier: Optional[str] = None         # "Palier 1" etc.
+  level_range: Optional[str] = None    # ex: "1-10"
+  rarity: Optional[str] = None
   zone: Optional[str] = None
   drops: Optional[List[str]] = None
-  abilities: Optional[List[str]] = None  # liste de lignes "Compétences"
-
+  abilities: Optional[List[str]] = None
   variants: Dict[int, MonsterVariant] = None
 
 
@@ -130,20 +142,22 @@ class Compendium:
   def to_dict(self) -> Dict[str, Any]:
     def monster_variant_to_dict(v: MonsterVariant) -> Dict[str, Any]:
       return asdict(v)
+
     def monster_to_dict(m: Monster) -> Dict[str, Any]:
       d = asdict(m)
       d["variants"] = {str(k): monster_variant_to_dict(v) for k, v in (m.variants or {}).items()}
       return d
+
     return {
       "monsters": {k: monster_to_dict(v) for k, v in self.monsters.items()},
-      "skills": {k: asdict(v) for k, v in self.skills.items()}
+      "skills": {k: asdict(v) for k, v in self.skills.items()},
     }
 
   @staticmethod
   def from_dict(d: Dict[str, Any]) -> "Compendium":
     monsters: Dict[str, Monster] = {}
     for name, md in d.get("monsters", {}).items():
-      variants = {}
+      variants: Dict[int, MonsterVariant] = {}
       for lk, vd in (md.get("variants", {}) or {}).items():
         variants[int(lk)] = MonsterVariant(
           level=int(vd["level"]),
@@ -155,16 +169,18 @@ class Compendium:
           DEX=float(vd["DEX"]),
           VIT=float(vd["VIT"]),
           base_attack=float(vd["base_attack"]) if vd.get("base_attack") is not None else None,
-          extra=vd.get("extra")
+          extra=vd.get("extra"),
         )
+
       monsters[name] = Monster(
         name=md.get("name", name),
+        palier=md.get("palier"),
         level_range=md.get("level_range"),
         rarity=md.get("rarity"),
         zone=md.get("zone"),
         drops=md.get("drops"),
         abilities=md.get("abilities"),
-        variants=variants
+        variants=variants,
       )
 
     skills: Dict[str, Skill] = {}
@@ -174,50 +190,113 @@ class Compendium:
     return Compendium(monsters=monsters, skills=skills)
 
 
+# ----------------------------
+# Encounter (multi-combat)
+# ----------------------------
+
+Side = Literal["player", "mob"]
+
+
 @dataclass
-class CombatantRef:
-  # Référence UI (soit un PJ, soit un monstre + niveau variante)
-  ref_type: str  # "player" | "monster"
-  ref_name: str
-  variant_level: Optional[int] = None
+class Participant:
+  id: str
+  side: Side
+  runtime: RuntimeEntity
 
-  def to_runtime(self, players: List[Player], compendium: Compendium) -> RuntimeEntity:
-    if self.ref_type == "player":
-      p = next(x for x in players if x.name == self.ref_name)
-      p.ensure_current()
-      return RuntimeEntity(
-        name=p.name,
-        kind="PJ",
-        level=p.level,
-        hp_max=p.hp_max,
-        mp_max=p.mp_max,
-        STR=p.STR, AGI=p.AGI, INT=p.INT, DEX=p.DEX, VIT=p.VIT,
-        hp=float(p.hp), mp=float(p.mp),
-      )
 
-    # Monster
-    m = compendium.monsters[self.ref_name]
-    lvl = int(self.variant_level or min(m.variants.keys()))
-    v = m.variants[lvl]
-    return RuntimeEntity(
-      name=f"{m.name} (Lvl {lvl})",
-      kind="Boss" if (m.rarity and "boss" in m.rarity.lower()) else "Mob",
-      level=lvl,
-      hp_max=v.hp_max,
-      mp_max=v.mp_max,
-      STR=v.STR, AGI=v.AGI, INT=v.INT, DEX=v.DEX, VIT=v.VIT,
-      hp=float(v.hp_max),
-      mp=float(v.mp_max),
-      base_attack=v.base_attack,
-      zone=m.zone,
-      drops=m.drops,
-      abilities=m.abilities,
-    )
+@dataclass
+class ActionLogEntry:
+  ts: float
+  round: int
+  turn_index: int
+  actor_id: str
+  actor_name: str
+  target_id: Optional[str]
+  target_name: Optional[str]
+  action_type: str  # "basic_attack" | "skill"
+  skill_name: Optional[str]
+  roll_a: float
+  roll_b: float
+  perce_armure: bool
+  vit_div: float
+  result: Dict[str, Any]
 
-  def apply_runtime_back(self, runtime: RuntimeEntity, players: List[Player]) -> None:
-    # Seuls les PJ sont persistants
-    if self.ref_type != "player":
+  def to_dict(self) -> Dict[str, Any]:
+    return asdict(self)
+
+
+@dataclass
+class EncounterState:
+  encounter_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+  created_ts: float = field(default_factory=lambda: time.time())
+
+  participants: List[Participant] = field(default_factory=list)
+
+  # turn management
+  turn_index: int = 0  # increments each action
+  round: int = 1       # computed from turn_index and number of active participants
+
+  log: List[ActionLogEntry] = field(default_factory=list)
+
+  def alive_participants(self) -> List[Participant]:
+    return [p for p in self.participants if p.runtime.hp > 0]
+
+  def players_alive(self) -> List[Participant]:
+    return [p for p in self.alive_participants() if p.side == "player"]
+
+  def mobs_alive(self) -> List[Participant]:
+    return [p for p in self.alive_participants() if p.side == "mob"]
+
+  def _turn_cycle(self) -> List[Participant]:
+    # 1 round = tous les PJ (vivants) puis tous les mobs (vivants)
+    return self.players_alive() + self.mobs_alive()
+
+  def current_actor(self) -> Optional[Participant]:
+    cycle = self._turn_cycle()
+    if not cycle:
+      return None
+    idx = self.turn_index % len(cycle)
+    return cycle[idx]
+
+  def recompute_round(self) -> None:
+    cycle = self._turn_cycle()
+    if not cycle:
+      self.round = 1
       return
-    p = next(x for x in players if x.name == self.ref_name)
-    p.hp = float(runtime.hp)
-    p.mp = float(runtime.mp)
+    self.round = (self.turn_index // len(cycle)) + 1
+
+  def next_turn(self) -> None:
+    self.turn_index += 1
+    self.recompute_round()
+
+  def to_dict(self) -> Dict[str, Any]:
+    return {
+      "encounter_id": self.encounter_id,
+      "created_ts": self.created_ts,
+      "turn_index": self.turn_index,
+      "round": self.round,
+      "participants": [
+        {"id": p.id, "side": p.side, "runtime": asdict(p.runtime)} for p in self.participants
+      ],
+      "log": [e.to_dict() for e in self.log],
+    }
+
+  @staticmethod
+  def from_dict(d: Dict[str, Any]) -> "EncounterState":
+    stt = EncounterState(
+      encounter_id=d.get("encounter_id", str(uuid.uuid4())),
+      created_ts=float(d.get("created_ts", time.time())),
+    )
+    stt.turn_index = int(d.get("turn_index", 0))
+    stt.round = int(d.get("round", 1))
+
+    parts: List[Participant] = []
+    for pd in d.get("participants", []):
+      rd = pd["runtime"]
+      rt = RuntimeEntity(**rd)
+      parts.append(Participant(id=pd["id"], side=pd["side"], runtime=rt))
+    stt.participants = parts
+
+    stt.log = [ActionLogEntry(**ld) for ld in d.get("log", [])]
+    stt.recompute_round()
+    return stt

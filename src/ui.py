@@ -1,103 +1,95 @@
+import time
+import uuid
+import random
 import streamlit as st
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, Dict
 
-from .models import Player, Compendium, CombatantRef, RuntimeEntity
+from .models import Player, Compendium, Monster, EncounterState, Participant, RuntimeEntity, ActionLogEntry
 
 
-def render_log_panel() -> None:
-  st.subheader("Log de combat")
-  log = st.session_state.get("combat_log", [])
-  if not log:
-    st.caption("Le log apparaîtra ici.")
+def render_log_panel(enc: EncounterState, on_save: Callable[[], None]) -> None:
+  st.subheader("Journal du combat (persistant)")
+  st.caption("Chaque action (attaque/skill) est enregistrée avec round, tour, rolls et résultat.")
+
+  if not enc.log:
+    st.caption("Aucune action enregistrée.")
     return
-  st.text("\n".join(log[-80:]))
-  c1, c2 = st.columns([1, 1])
-  if c1.button("Vider le log"):
-    st.session_state.combat_log = []
+
+  last = enc.log[-80:]
+  st.text("\n".join([
+    f"[R{e.round} T{e.turn_index}] {e.actor_name} -> {e.target_name or '—'} | {e.action_type}{' ('+e.skill_name+')' if e.skill_name else ''} | x={e.roll_a} y={e.roll_b} | hit={e.result.get('hit')}"
+    for e in last
+  ]))
+
+  c1, c2, c3 = st.columns([1, 1, 1])
+  if c1.button("Sauvegarder encounter maintenant"):
+    on_save()
+    st.success("Encounter sauvegardé.")
+  if c2.button("Tout afficher (brut JSON)"):
+    st.json(enc.to_dict())
+  if c3.button("Vider log (attention)"):
+    enc.log = []
+    on_save()
     st.rerun()
-  if c2.button("Afficher tout"):
-    st.text("\n".join(log))
 
 
 def render_compendium_summary(comp: Compendium) -> None:
-  st.write({
-    "Monstres": len(comp.monsters),
-    "Skills": len(comp.skills),
-  })
-  if comp.monsters:
-    # stats rapides
-    lvls = []
-    for m in comp.monsters.values():
-      if m.variants:
-        lvls.extend(list(m.variants.keys()))
-    if lvls:
-      st.caption(f"Niveaux variants min/max: {min(lvls)} → {max(lvls)}")
+  st.write({"Monstres": len(comp.monsters), "Skills": len(comp.skills)})
 
 
-def render_monsters_browser(comp: Compendium) -> None:
-  names = sorted(comp.monsters.keys())
-  selected = st.selectbox("Monstre", names)
-  m = comp.monsters[selected]
+def render_bestiaire_by_palier(comp: Compendium) -> None:
+  if not comp.monsters:
+    st.info("Compendium vide.")
+    return
+
+  # group by palier
+  by_palier: Dict[str, List[Monster]] = {}
+  for m in comp.monsters.values():
+    p = m.palier or "Palier ?"
+    by_palier.setdefault(p, []).append(m)
+
+  paliers_sorted = sorted(by_palier.keys(), key=lambda x: (999 if "?" in x else int(x.split()[-1])))
+  palier = st.selectbox("Palier", paliers_sorted)
+
+  mobs = sorted(by_palier[palier], key=lambda m: m.name.lower())
+  name = st.selectbox("Monstre", [m.name for m in mobs])
+  m = comp.monsters[name]
 
   st.markdown(f"### **{m.name}**")
-  meta = {
-    "Rareté": m.rarity or "—",
+  st.write({
+    "Palier": m.palier or "—",
     "Niveaux": m.level_range or "—",
+    "Rareté": m.rarity or "—",
     "Zone": m.zone or "—",
     "Drops": ", ".join(m.drops or []) or "—",
-  }
-  st.write(meta)
+  })
 
   if m.abilities:
-    st.markdown("#### Compétences")
+    st.markdown("#### Compétences (bestiaire)")
     for a in m.abilities:
       st.write(f"- {a}")
 
   if not m.variants:
-    st.warning("Aucune variante de niveau trouvée.")
+    st.warning("Pas de variantes de niveau détectées.")
     return
 
   lvls = sorted(m.variants.keys())
-  lvl = st.selectbox("Variante de niveau", lvls, index=0, key=f"monster_lvl_{m.name}")
-  v = m.variants[lvl]
+  lvl = st.slider("Niveau (progressif)", min_value=int(lvls[0]), max_value=int(lvls[-1]), value=int(lvls[0]))
+  v = m.variants[int(lvl)]
 
-  st.markdown("#### Stats (variante)")
+  st.markdown("#### Stats")
   st.write({
-    "HP max": v.hp_max,
-    "MP max": v.mp_max,
-    "STR": v.STR,
-    "AGI": v.AGI,
-    "INT": v.INT,
-    "DEX": v.DEX,
-    "VIT": v.VIT,
-    "Attaque de base": v.base_attack if v.base_attack is not None else "—"
+    "HP max": v.hp_max, "MP max": v.mp_max,
+    "STR": v.STR, "AGI": v.AGI, "INT": v.INT, "DEX": v.DEX, "VIT": v.VIT,
+    "Attaque de base": v.base_attack if v.base_attack is not None else "—",
+    "Extra": v.extra or {},
   })
-  if v.extra:
-    st.markdown("#### Extras (parsing brut)")
-    st.write(v.extra)
-
-
-def render_skills_browser(comp: Compendium) -> None:
-  names = sorted(comp.skills.keys())
-  selected = st.selectbox("Skill", names)
-  s = comp.skills[selected]
-  st.markdown(f"### **{s.name}**")
-  st.write({
-    "Palier": s.palier or "—",
-    "Catégorie": s.category or "—",
-    "Coût MP": s.cost_mp or "—",
-    "Condition": s.condition or "—",
-  })
-  if s.description:
-    st.markdown("#### Description")
-    st.write(s.description)
 
 
 def render_player_editor(players: List[Player], on_save: Callable[[], None]) -> None:
   if not players:
-    st.info("Aucun PJ. Ajoute-en un ci-dessous.")
+    st.info("Aucun PJ.")
 
-  # Liste + édition
   if players:
     names = [p.name for p in players]
     selected = st.selectbox("Choisir un PJ", names, index=0)
@@ -167,52 +159,239 @@ def render_player_editor(players: List[Player], on_save: Callable[[], None]) -> 
       st.rerun()
 
 
-def render_combatant_picker(label: str, players: List[Player], comp: Compendium, key_prefix: str) -> Optional[CombatantRef]:
-  sources = ["PJ", "Monstre"]
-  src = st.selectbox(f"{label} — Source", sources, key=f"{key_prefix}_src")
+# ---------------- Encounter UI ----------------
 
-  if src == "PJ":
+def _monster_to_runtime_manual(m: Monster, lvl: int, stats: Dict[str, float], base_attack: Optional[float]) -> RuntimeEntity:
+  return RuntimeEntity(
+    name=f"{m.name} (Lvl {lvl})",
+    kind="Boss" if (m.rarity and "boss" in m.rarity.lower()) else "Mob",
+    level=int(lvl),
+    hp_max=float(stats["hp_max"]),
+    mp_max=float(stats["mp_max"]),
+    STR=float(stats["STR"]),
+    AGI=float(stats["AGI"]),
+    INT=float(stats["INT"]),
+    DEX=float(stats["DEX"]),
+    VIT=float(stats["VIT"]),
+    hp=float(stats["hp_max"]),
+    mp=float(stats["mp_max"]),
+    base_attack=base_attack,
+    zone=m.zone,
+    drops=m.drops,
+    abilities=m.abilities,
+    extra={},  # pas d'info variant => vide
+  )
+
+
+def _player_to_runtime(p: Player) -> RuntimeEntity:
+  p.ensure_current()
+  return RuntimeEntity(
+    name=p.name, kind="PJ", level=p.level,
+    hp_max=p.hp_max, mp_max=p.mp_max,
+    STR=p.STR, AGI=p.AGI, INT=p.INT, DEX=p.DEX, VIT=p.VIT,
+    hp=float(p.hp), mp=float(p.mp),
+  )
+
+
+def _monster_to_runtime(m: Monster, lvl: int) -> RuntimeEntity:
+  v = m.variants[lvl]
+  return RuntimeEntity(
+    name=f"{m.name} (Lvl {lvl})",
+    kind="Boss" if (m.rarity and "boss" in m.rarity.lower()) else "Mob",
+    level=lvl,
+    hp_max=v.hp_max, mp_max=v.mp_max,
+    STR=v.STR, AGI=v.AGI, INT=v.INT, DEX=v.DEX, VIT=v.VIT,
+    hp=float(v.hp_max), mp=float(v.mp_max),
+    base_attack=v.base_attack,
+    zone=m.zone,
+    drops=m.drops,
+    abilities=m.abilities,
+    extra=v.extra or {},
+  )
+
+
+def render_encounter_builder(enc: EncounterState, players: List[Player], comp: Compendium, on_save: Callable[[], None]) -> None:
+  st.subheader("Préparer l'encounter (multi-PJ / multi-mobs)")
+
+  c1, c2 = st.columns(2)
+  with c1:
+    st.markdown("### Ajouter un PJ")
     if not players:
-      st.warning("Aucun PJ disponible.")
-      return None
-    names = [p.name for p in players]
-    name = st.selectbox(f"{label} — PJ", names, key=f"{key_prefix}_pj")
-    return CombatantRef(ref_type="player", ref_name=name)
+      st.warning("Aucun PJ dans players.json")
+    else:
+      pname = st.selectbox("PJ", [p.name for p in players], key="enc_add_pj")
+      if st.button("Ajouter PJ à l'encounter"):
+        p = next(x for x in players if x.name == pname)
+        rt = _player_to_runtime(p)
+        enc.participants.append(Participant(id=str(uuid.uuid4()), side="player", runtime=rt))
+        enc.recompute_round()
+        on_save()
+        st.rerun()
 
-  # Monstre
-  if not comp.monsters:
-    st.warning("Compendium vide (pas de bestiaire importé).")
-    return None
+  with c2:
+    st.markdown("### Ajouter un mob")
+    if not comp.monsters:
+      st.warning("Compendium vide.")
+    else:
+      # filtre palier
+      by_palier = {}
+      for m in comp.monsters.values():
+        by_palier.setdefault(m.palier or "Palier ?", []).append(m)
+      paliers = sorted(by_palier.keys(), key=lambda x: (999 if "?" in x else int(x.split()[-1])))
+      pal = st.selectbox("Palier", paliers, key="enc_add_mob_palier")
+      mname = st.selectbox("Monstre", sorted([m.name for m in by_palier[pal]]), key="enc_add_mob_name")
+      m = comp.monsters[mname]
+      if not m.variants:
+        st.warning("Ce monstre n'a pas de variantes.")
+      else:
+        lvls = sorted(m.variants.keys())
+        lvl = st.slider("Niveau", min_value=int(lvls[0]), max_value=int(lvls[-1]), value=int(lvls[0]), key="enc_add_mob_lvl")
+        if st.button("Ajouter Mob à l'encounter"):
+          rt = _monster_to_runtime(m, int(lvl))
+          enc.participants.append(Participant(id=str(uuid.uuid4()), side="mob", runtime=rt))
+          enc.recompute_round()
+          on_save()
+          st.rerun()
 
-  mname = st.selectbox(f"{label} — Monstre", sorted(comp.monsters.keys()), key=f"{key_prefix}_mob")
-  m = comp.monsters[mname]
-  if not m.variants:
-    st.warning("Ce monstre n'a pas de variantes de niveau.")
-    return None
-
-  lvls = sorted(m.variants.keys())
-  lvl = st.selectbox(f"{label} — Niveau", lvls, key=f"{key_prefix}_mob_lvl")
-  return CombatantRef(ref_type="monster", ref_name=mname, variant_level=int(lvl))
-
-
-def render_combatant_panel(ref: Optional[CombatantRef], players: List[Player], comp: Compendium) -> None:
-  if ref is None:
-    st.caption("Aucun.")
+  st.divider()
+  st.markdown("### Participants actuels")
+  if not enc.participants:
+    st.caption("Aucun participant.")
     return
 
-  rt = ref.to_runtime(players, comp)
+  for p in enc.participants:
+    st.write({
+      "id": p.id[:8],
+      "side": p.side,
+      "name": p.runtime.name,
+      "HP": f"{p.runtime.hp:.1f}/{p.runtime.hp_max:.1f}",
+      "MP": f"{p.runtime.mp:.1f}/{p.runtime.mp_max:.1f}",
+      "STR": p.runtime.STR,
+      "VIT": p.runtime.VIT,
+    })
+
+  c3, c4 = st.columns([1, 1])
+  if c3.button("Reset encounter (vide)"):
+    enc.participants = []
+    enc.turn_index = 0
+    enc.recompute_round()
+    enc.log = []
+    on_save()
+    st.rerun()
+
+  if c4.button("Supprimer les morts (HP<=0)"):
+    enc.participants = [pp for pp in enc.participants if pp.runtime.hp > 0]
+    enc.recompute_round()
+    on_save()
+    st.rerun()
+
+
+def render_turn_panel(enc: EncounterState) -> None:
+  enc.recompute_round()
+  actor = enc.current_actor()
+  st.markdown("### Tour actuel")
+  if actor is None:
+    st.info("Personne ne peut jouer (encounter vide ou tous morts).")
+    return
+
   st.write({
-    "Nom": rt.name,
-    "Type": rt.kind,
-    "Niveau": rt.level,
-    "HP": f"{rt.hp:.2f}/{rt.hp_max:.2f}",
-    "MP": f"{rt.mp:.2f}/{rt.mp_max:.2f}",
-    "STR": rt.STR, "VIT": rt.VIT, "AGI": rt.AGI, "DEX": rt.DEX, "INT": rt.INT,
-    "Attaque de base": rt.base_attack if rt.base_attack is not None else "—",
-    "Zone": rt.zone or "—",
-    "Drops": ", ".join(rt.drops or []) or "—",
+    "Round": enc.round,
+    "Turn index (action)": enc.turn_index,
+    "Acteur": actor.runtime.name,
+    "Camp": actor.side,
+    "HP": f"{actor.runtime.hp:.1f}/{actor.runtime.hp_max:.1f}",
+    "MP": f"{actor.runtime.mp:.1f}/{actor.runtime.mp_max:.1f}",
   })
-  if rt.abilities:
-    st.markdown("**Compétences**")
-    for a in rt.abilities:
-      st.write(f"- {a}")
+
+
+def render_action_panel(
+  enc: EncounterState,
+  comp: Compendium,
+  vit_div: float,
+  resolve_fn,
+  on_save: Callable[[], None],
+) -> None:
+  actor = enc.current_actor()
+  if actor is None:
+    return
+
+  targets = [p for p in enc.alive_participants() if p.id != actor.id]
+  if not targets:
+    st.warning("Aucune cible possible.")
+    return
+
+  target_id = st.selectbox("Cible", [f"{t.runtime.name} [{t.id[:6]}]" for t in targets], key="target_pick")
+  target = targets[[f"{t.runtime.name} [{t.id[:6]}]" for t in targets].index(target_id)]
+
+  action_type = st.radio("Action", ["Attaque de base", "Skill"], horizontal=True)
+
+  skill_name = None
+  if action_type == "Skill":
+    if not comp.skills:
+      st.warning("Aucun skill importé.")
+    else:
+      skill_name = st.selectbox("Skill utilisé", sorted(comp.skills.keys()))
+      s = comp.skills[skill_name]
+      st.caption(f"Coût: {s.cost_mp or '—'} | Condition: {s.condition or '—'}")
+
+  perce_armure = st.checkbox("Perce-armure (ignore VIT B dans dégâts)", value=False)
+
+  c1, c2, c3 = st.columns([1, 1, 1])
+  with c1:
+    roll_a = st.number_input("Roll acteur (x)", min_value=0.0, max_value=10000.0, value=10.0, step=1.0)
+    if st.button("🎲 Random x"):
+      st.session_state["__tmp_rand_x"] = random.randint(1, 100)
+      st.rerun()
+    if "__tmp_rand_x" in st.session_state:
+      roll_a = float(st.session_state.pop("__tmp_rand_x"))
+      st.info(f"x généré: {roll_a}")
+  with c2:
+    roll_b = st.number_input("Roll cible (y)", min_value=0.0, max_value=10000.0, value=10.0, step=1.0)
+    if st.button("🎲 Random y"):
+      st.session_state["__tmp_rand_y"] = random.randint(1, 100)
+      st.rerun()
+    if "__tmp_rand_y" in st.session_state:
+      roll_b = float(st.session_state.pop("__tmp_rand_y"))
+      st.info(f"y généré: {roll_b}")
+  with c3:
+    st.write({"VIT divisor": vit_div})
+
+  if st.button("Valider l'action (résoudre) ✅", type="primary"):
+    # Resolve
+    result = resolve_fn(
+      attacker=actor.runtime,
+      defender=target.runtime,
+      roll_a=float(roll_a),
+      roll_b=float(roll_b),
+      perce_armure=bool(perce_armure),
+      vit_scale_div=float(vit_div),
+    )
+
+    entry = ActionLogEntry(
+      ts=time.time(),
+      round=int(enc.round),
+      turn_index=int(enc.turn_index),
+      actor_id=actor.id,
+      actor_name=actor.runtime.name,
+      target_id=target.id,
+      target_name=target.runtime.name,
+      action_type="skill" if action_type == "Skill" else "basic_attack",
+      skill_name=skill_name,
+      roll_a=float(roll_a),
+      roll_b=float(roll_b),
+      perce_armure=bool(perce_armure),
+      vit_div=float(vit_div),
+      result=result,
+    )
+    enc.log.append(entry)
+
+    # Avance le tour
+    enc.next_turn()
+    on_save()
+
+    # Affichage court
+    st.success("Action enregistrée + tour avancé.")
+    for line in result.get("effects", []):
+      st.text(line)
+
+    st.rerun()

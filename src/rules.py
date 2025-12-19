@@ -10,14 +10,6 @@ def resolve_attack(
   perce_armure: bool = False,
   vit_scale_div: float = 100.0
 ) -> Dict[str, Any]:
-  """
-  Règle :
-    si x > y :
-      dégâts = (x - y) + STR_A - VIT_B/scale (sauf perce-armure)
-    sinon :
-      défense = (y - x) + VIT_B/scale - STR_A
-      si défense > 0 : l'attaquant prend défense dégâts
-  """
   vit_term = defender.VIT / float(vit_scale_div)
 
   out: Dict[str, Any] = {
@@ -32,6 +24,7 @@ def resolve_attack(
 
   if roll_a > roll_b:
     out["hit"] = True
+
     dmg = (roll_a - roll_b) + attacker.STR
     if not perce_armure:
       dmg -= vit_term
@@ -41,13 +34,6 @@ def resolve_attack(
 
     out["raw"]["damage"] = dmg
     out["effects"].append(f"{attacker.name} touche {defender.name} et inflige {dmg:.2f} dégâts.")
-
-    # Infos bestiaire (si présentes)
-    if attacker.base_attack is not None:
-      out["effects"].append(f"(Info) Attaque de base {attacker.name}: {attacker.base_attack}")
-    if defender.zone:
-      out["effects"].append(f"(Info) Zone {defender.name}: {defender.zone}")
-
     out["effects"].append(f"PV {defender.name}: {defender.hp:.2f}/{defender.hp_max:.2f}")
     return out
 

@@ -1,176 +1,131 @@
 import streamlit as st
 
 from src.storage import (
-  load_settings,
-  load_players,
-  save_players,
-  load_compendium,
-  save_compendium,
+  load_settings, load_players, save_players,
+  load_compendium, save_compendium,
+  save_encounter, load_encounter, list_encounters
 )
 from src.md_parser import build_compendium_from_docs
-from src.models import CombatantRef
+from src.models import EncounterState
 from src.rules import resolve_attack
 from src.ui import (
   render_player_editor,
   render_compendium_summary,
-  render_skills_browser,
-  render_monsters_browser,
-  render_combatant_picker,
-  render_combatant_panel,
+  render_bestiaire_by_palier,
+  render_encounter_builder,
+  render_turn_panel,
+  render_action_panel,
   render_log_panel,
 )
 
 
 def main():
-  st.set_page_config(page_title="Bofuri RP — Assistant MJ (V2)", layout="wide")
-  st.title("Assistant MJ — Bofuri RP (V2)")
+  st.set_page_config(page_title="Bofuri RP — Assistant MJ (V3)", layout="wide")
+  st.title("Assistant MJ — Bofuri RP (V3: Encounter multi-combat)")
 
   settings = load_settings()
   players = load_players()
-  compendium = load_compendium()
+  compendium = load_compendium(settings.get("compendium_path", "data/compendium.json"))
 
-  if "combat_log" not in st.session_state:
-    st.session_state.combat_log = []
-  if "last_result" not in st.session_state:
-    st.session_state.last_result = None
+  # Encounter state in session
+  if "encounter" not in st.session_state:
+    st.session_state.encounter = EncounterState()
 
-  tabs = st.tabs(["⚔️ Combat", "🐾 Bestiaire", "📚 Skills", "🧰 Import & Admin"])
+  enc: EncounterState = st.session_state.encounter
 
-  # -------------------- Combat
+  def save_enc():
+    save_encounter(enc)
+
+  tabs = st.tabs(["⚔️ Encounter (Combat)", "🐾 Bestiaire", "🧰 Import & Admin", "👤 PJ"])
+
+  # ---------------- Combat
   with tabs[0]:
     left, right = st.columns([1, 1])
 
     with left:
-      st.subheader("Sélection des combattants")
-      a_ref = render_combatant_picker("A (Attaquant)", players, compendium, key_prefix="A")
-      b_ref = render_combatant_picker("B (Défenseur)", players, compendium, key_prefix="B")
+      st.subheader("Gestion Encounter")
+      st.caption(f"Encounter ID: {enc.encounter_id}")
+
+      render_encounter_builder(enc, players, compendium, on_save=save_enc)
 
       st.divider()
-      c1, c2 = st.columns(2)
+      st.subheader("Chargement / Sauvegardes")
+      existing = list_encounters()
+      c1, c2 = st.columns([1, 1])
       with c1:
-        st.subheader("A — Détails")
-        render_combatant_panel(a_ref, players, compendium)
+        if st.button("Sauvegarder l'encounter maintenant"):
+          save_enc()
+          st.success("Sauvegardé.")
       with c2:
-        st.subheader("B — Détails")
-        render_combatant_panel(b_ref, players, compendium)
+        if existing:
+          chosen = st.selectbox("Charger un encounter", ["—"] + existing)
+          if chosen != "—" and st.button("Charger"):
+            st.session_state.encounter = load_encounter(chosen)
+            st.rerun()
+        else:
+          st.caption("Aucun encounter sauvegardé.")
 
     with right:
-      st.subheader("Résolution (duel de rolls)")
-
+      st.subheader("Tour / Actions")
       vit_div = st.number_input(
         "Diviseur VIT (VIT/?)",
-        min_value=1.0,
-        max_value=100000.0,
+        min_value=1.0, max_value=100000.0,
         value=float(settings.get("vit_divisor_default", 100.0)),
         step=1.0
       )
-      perce_armure = st.checkbox("Skill: Perce-armure (ignore VIT B dans les dégâts)", value=False)
 
-      c1, c2 = st.columns(2)
-      with c1:
-        roll_a = st.number_input("Roll A (x)", min_value=0.0, max_value=10000.0, value=10.0, step=1.0)
-      with c2:
-        roll_b = st.number_input("Roll B (y)", min_value=0.0, max_value=10000.0, value=10.0, step=1.0)
-
-      # Boutons
-      b1, b2, b3 = st.columns([1, 1, 1])
-      do_resolve = b1.button("Résoudre l'attaque", type="primary")
-      do_reset_players = b2.button("Reset PV/PM (PJ)")
-      do_save_players = b3.button("Sauvegarder PJ")
-
-      if do_reset_players:
-        for p in players:
-          p.reset()
-        save_players(players)
-        st.success("PV/PM PJ reset + sauvegardés.")
-        st.rerun()
-
-      if do_save_players:
-        save_players(players)
-        st.success("PJ sauvegardés.")
-
-      if do_resolve:
-        if a_ref is None or b_ref is None:
-          st.error("Choisis A et B.")
-        else:
-          # Récupère des 'snapshots' combat (les monstres ne sont pas persistés en PV/PM)
-          a = a_ref.to_runtime(players, compendium)
-          b = b_ref.to_runtime(players, compendium)
-
-          result = resolve_attack(
-            attacker=a,
-            defender=b,
-            roll_a=roll_a,
-            roll_b=roll_b,
-            perce_armure=perce_armure,
-            vit_scale_div=vit_div
-          )
-
-          st.session_state.last_result = result
-          st.session_state.combat_log.extend(result["effects"])
-
-          # Si A ou B est un PJ : on applique les PV au PJ (persistant)
-          a_ref.apply_runtime_back(a, players)
-          b_ref.apply_runtime_back(b, players)
-
-      st.markdown("### Résultat")
-      if st.session_state.last_result is None:
-        st.info("Aucun duel résolu pour l’instant.")
-      else:
-        r = st.session_state.last_result
-        st.write({
-          "Touché ?": r["hit"],
-          "Roll A": r["roll_a"],
-          "Roll B": r["roll_b"],
-          "Perce-armure": r["perce_armure"],
-          "Diviseur VIT": r["vit_scale_div"],
-          **r["raw"]
-        })
-        for line in r["effects"]:
-          st.text(line)
+      render_turn_panel(enc)
+      st.divider()
+      render_action_panel(
+        enc=enc,
+        comp=compendium,
+        vit_div=float(vit_div),
+        resolve_fn=resolve_attack,
+        on_save=save_enc
+      )
 
       st.divider()
-      render_log_panel()
+      render_log_panel(enc, on_save=save_enc)
 
-  # -------------------- Bestiaire
+      st.divider()
+      st.subheader("Sync PV PJ")
+      st.caption("Les PJ dans l'encounter ne modifient pas automatiquement players.json : clique ici pour appliquer les PV/PM actuels aux PJ persistants.")
+      if st.button("Appliquer PV/PM encounter → players.json"):
+        # match by name exact
+        name_to_p = {p.name: p for p in players}
+        for part in enc.participants:
+          if part.side == "player" and part.runtime.name in name_to_p:
+            p = name_to_p[part.runtime.name]
+            p.hp = float(part.runtime.hp)
+            p.mp = float(part.runtime.mp)
+        save_players(players)
+        st.success("players.json mis à jour.")
+
+  # ---------------- Bestiaire
   with tabs[1]:
-    st.subheader("Bestiaire (compendium)")
+    st.subheader("Bestiaire (par Palier, niveaux progressifs)")
     if not compendium.monsters:
-      st.info("Compendium vide. Va dans l’onglet Import & Admin puis clique 'Importer docs/'.")
+      st.info("Compendium vide. Va dans Import & Admin.")
     else:
-      render_monsters_browser(compendium)
+      render_bestiaire_by_palier(compendium)
 
-  # -------------------- Skills
+  # ---------------- Import
   with tabs[2]:
-    st.subheader("Skills (compendium)")
-    if not compendium.skills:
-      st.info("Aucun skill chargé. Va dans l’onglet Import & Admin puis clique 'Importer docs/'.")
-    else:
-      render_skills_browser(compendium)
+    st.subheader("Import docs/ → Compendium")
+    st.write(f"Dossier docs: `{settings.get('docs_dir', 'docs')}/`")
 
-  # -------------------- Import & Admin
-  with tabs[3]:
-    st.subheader("Import depuis docs/")
-    st.write(f"📁 Dossier docs: `{settings.get('docs_dir', 'docs')}/`")
-
-    c1, c2 = st.columns([1, 1])
-    with c1:
-      if st.button("Importer docs/ → Générer compendium.json", type="primary"):
-        comp = build_compendium_from_docs(settings.get("docs_dir", "docs"))
-        save_compendium(comp, settings.get("compendium_path", "data/compendium.json"))
-        st.success("Compendium généré et sauvegardé.")
-        st.rerun()
-
-    with c2:
-      if st.button("Charger compendium.json existant"):
-        st.rerun()
+    if st.button("Importer / Rebuild compendium.json", type="primary"):
+      comp = build_compendium_from_docs(settings.get("docs_dir", "docs"))
+      save_compendium(comp, settings.get("compendium_path", "data/compendium.json"))
+      st.success("Compendium reconstruit.")
+      st.rerun()
 
     st.divider()
-    st.subheader("Résumé")
     render_compendium_summary(compendium)
 
-    st.divider()
-    st.subheader("Éditeur PJ (persistant)")
+  # ---------------- PJ
+  with tabs[3]:
+    st.subheader("PJ (persistants)")
     render_player_editor(players, on_save=lambda: save_players(players))
 
 
