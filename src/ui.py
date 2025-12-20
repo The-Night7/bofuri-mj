@@ -501,96 +501,115 @@ def render_turn_panel(enc: EncounterState) -> None:
     })
 
 
-def render_action_panel(
-        enc: EncounterState,
-        comp: Compendium,
-        vit_div: float,
-        resolve_fn,
-        on_save: Callable[[], None],
-) -> None:
+def render_action_panel(enc: EncounterState, comp: Compendium, vit_div: float, resolve_fn, on_save) -> None:
+    """
+    Panneau d'action pour le combat
+    """
+    st.subheader("Action")
+
     actor = enc.current_actor()
-    if actor is None:
+    if not actor:
+        st.warning("Aucun participant actif.")
         return
 
+    # Liste des participants vivants qui ne sont pas l'acteur courant
     targets = [p for p in enc.alive_participants() if p.id != actor.id]
     if not targets:
-        st.warning("Aucune cible possible.")
+        st.warning("Aucune cible disponible.")
         return
 
-    labels = [f"{t.runtime.name} [{t.id[:6]}]" for t in targets]
-    pick = st.selectbox("Cible", labels, key="target_pick")
-    target = targets[labels.index(pick)]
+    # Affichage de l'acteur courant
+    st.write(f"**Tour de {actor.runtime.name}** (niveau {actor.runtime.level})")
 
-    action_type = st.radio("Action", ["Attaque de base", "Skill"], horizontal=True, key="action_type")
+    # Sélection de la cible
+    target_names = [p.runtime.name for p in targets]
+    target_idx = st.selectbox("Cible", range(len(targets)), format_func=lambda i: target_names[i])
+    target = targets[target_idx]
 
-    skill_name = None
-    if action_type == "Skill":
-        if not comp.skills:
-            st.warning("Aucun skill importé.")
-        else:
-            skill_name = st.selectbox("Skill utilisé", sorted(comp.skills.keys()), key="skill_pick")
-            s = comp.skills[skill_name]
-            st.caption(f"Coût: {s.cost_mp or '—'} | Condition: {s.condition or '—'}")
+    # Type d'action
+    action_type = st.radio(
+        "Type d'action",
+        ["Attaque de base", "Compétence"],
+        horizontal=True
+    )
 
-    perce_armure = st.checkbox("Perce-armure (ignore VIT B dans dégâts)", value=False, key="perce_armure")
-
-    c1, c2, c3 = st.columns([1, 1, 1])
-    with c1:
-        roll_a = st.number_input("Roll acteur (x)", min_value=0.0, max_value=10000.0, value=10.0, step=1.0,
-                                 key="roll_a")
-        if st.button("Random x", key="rand_x"):
-            st.session_state["__tmp_rand_x"] = float(random.randint(1, 100))
-            st.rerun()
-        if "__tmp_rand_x" in st.session_state:
-            roll_a = float(st.session_state.pop("__tmp_rand_x"))
-            st.info(f"x généré: {roll_a}")
-
-    with c2:
-        roll_b = st.number_input("Roll cible (y)", min_value=0.0, max_value=10000.0, value=10.0, step=1.0, key="roll_b")
-        if st.button("Random y", key="rand_y"):
-            st.session_state["__tmp_rand_y"] = float(random.randint(1, 100))
-            st.rerun()
-        if "__tmp_rand_y" in st.session_state:
-            roll_b = float(st.session_state.pop("__tmp_rand_y"))
-            st.info(f"y généré: {roll_b}")
-
-    with c3:
-        st.write({"VIT divisor": vit_div})
-
-    if st.button("Valider l'action (résoudre) ✅", type="primary", key="btn_resolve"):
-        result = resolve_fn(
-            attacker=actor.runtime,
-            defender=target.runtime,
-            roll_a=float(roll_a),
-            roll_b=float(roll_b),
-            perce_armure=bool(perce_armure),
-            vit_scale_div=float(vit_div),
+    if action_type == "Attaque de base":
+        # Sélection du type d'attaque
+        attack_type = st.radio(
+            "Type d'attaque",
+            ["Physique (STR)", "Magique (INT)", "À distance (DEX)"],
+            horizontal=True
         )
 
-        entry = ActionLogEntry(
-            ts=time.time(),
-            round=int(enc.round),
-            turn_index=int(enc.turn_index),
-            actor_id=actor.id,
-            actor_name=actor.runtime.name,
-            target_id=target.id,
-            target_name=target.runtime.name,
-            action_type="skill" if action_type == "Skill" else "basic_attack",
-            skill_name=skill_name,
-            roll_a=float(roll_a),
-            roll_b=float(roll_b),
-            perce_armure=bool(perce_armure),
-            vit_div=float(vit_div),
-            result=result,
-        )
-        enc.log.append(entry)
-        enc.next_turn()
-        on_save()
+        # Conversion du type d'attaque pour le système de règles
+        attack_type_map = {
+            "Physique (STR)": "phys",
+            "Magique (INT)": "magic",
+            "À distance (DEX)": "ranged"
+        }
+        attack_type_value = attack_type_map[attack_type]
 
-        st.success("Action enregistrée + tour avancé.")
-        for line in result.get("effects", []):
-            st.text(line)
+        # Affichage de la statistique utilisée pour l'attaque
+        if attack_type == "Physique (STR)":
+            st.info(f"Utilise STR: {actor.runtime.STR}")
+        elif attack_type == "Magique (INT)":
+            st.info(f"Utilise INT: {actor.runtime.INT}")
+        elif attack_type == "À distance (DEX)":
+            st.info(f"Utilise DEX: {actor.runtime.DEX}")
 
-        st.rerun()
+        # Option perce-armure
+        perce_armure = st.checkbox("Perce-armure", value=False, help="Ignore partiellement la défense de la cible")
+
+        # Jets de dés
+        col1, col2 = st.columns(2)
+        with col1:
+            roll_a = st.number_input("Jet d'attaque", min_value=1.0, max_value=20.0, value=10.0, step=1.0)
+        with col2:
+            roll_b = st.number_input("Jet de défense", min_value=1.0, max_value=20.0, value=10.0, step=1.0)
+
+        # Bouton d'action
+        if st.button(f"⚔️ Attaquer {target.runtime.name}"):
+            result = resolve_fn(
+                attacker=actor.runtime,
+                defender=target.runtime,
+                roll_a=roll_a,
+                roll_b=roll_b,
+                attack_type=attack_type_value,
+                perce_armure=perce_armure,
+                vit_scale_div=vit_div
+            )
+
+            # Création d'une entrée de log
+            log_entry = ActionLogEntry(
+                ts=time.time(),
+                round=enc.round,
+                turn_index=enc.turn_index,
+                actor_id=actor.id,
+                actor_name=actor.runtime.name,
+                target_id=target.id,
+                target_name=target.runtime.name,
+                action_type="basic_attack",
+                skill_name=None,
+                roll_a=roll_a,
+                roll_b=roll_b,
+                perce_armure=perce_armure,
+                vit_div=vit_div,
+                result=result
+            )
+
+            # Ajout au log et passage au tour suivant
+            enc.log.append(log_entry)
+            enc.next_turn()
+            on_save()
+            st.rerun()
+
+    else:  # Compétence
+        st.info("Système de compétences à implémenter")
+
+        # Placeholder pour le système de compétences
+        if st.button("Passer le tour"):
+            enc.next_turn()
+            on_save()
+            st.rerun()
 
 # End of file

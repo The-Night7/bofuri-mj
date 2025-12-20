@@ -15,13 +15,25 @@ from src.rules import resolve_attack
 from src.md_parser import build_compendium_from_docs
 
 
-def resolve_action(attacker, defender, roll_a, roll_b, perce_armure=False, vit_scale_div=100.0):
+def resolve_action(attacker, defender, roll_a, roll_b, attack_type="phys", perce_armure=False, vit_scale_div=100.0):
+    """
+    Fonction de résolution d'action utilisée par l'interface
+
+    Parameters:
+    - attacker: L'entité qui attaque
+    - defender: L'entité qui défend
+    - roll_a: Le jet d'attaque
+    - roll_b: Le jet de défense
+    - attack_type: Le type d'attaque ("phys", "magic", "ranged")
+    - perce_armure: Si True, ignore une partie de la défense
+    - vit_scale_div: Diviseur pour la VIT (équilibrage)
+    """
     return resolve_attack(
         attacker=attacker,
         defender=defender,
         roll_a=roll_a,
         roll_b=roll_b,
-        attack_type="phys",  # TODO: supporter d'autres types
+        attack_type=attack_type,
         perce_armure=perce_armure,
         vit_scale_div=vit_scale_div,
     )
