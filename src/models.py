@@ -300,3 +300,23 @@ class EncounterState:
     stt.log = [ActionLogEntry(**ld) for ld in d.get("log", [])]
     stt.recompute_round()
     return stt
+
+  @classmethod
+  def new(cls, encounter_id: str):
+    """
+    Crée un EncounterState vide.
+    On passe par from_dict() pour éviter de dépendre exactement
+    de la signature __init__ (qui peut évoluer).
+    """
+    payload = {
+      "encounter_id": encounter_id,
+      # valeurs par défaut sûres
+      "participants": [],
+      "round": 1,
+      "turn_index": 0,
+      "active_index": 0,
+      "log": [],
+      "created_ts": time.time(),
+    }
+    # from_dict devrait gérer les champs manquants / extra.
+    return cls.from_dict(payload)
