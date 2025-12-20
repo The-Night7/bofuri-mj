@@ -60,7 +60,7 @@ def render_bestiaire_by_palier(comp: Compendium) -> None:
         return
 
     # group by palier
-    by_palier: Dict[str, List[Monster]] = {}
+    by_palier: Dict[str, List[tuple[str, Monster]]] = {}
     for key, m in comp.monsters.items():
         p = m.palier or "Palier ?"
         by_palier.setdefault(p, []).append((key, m))
@@ -100,6 +100,31 @@ def render_bestiaire_by_palier(comp: Compendium) -> None:
 
     if not m.variants:
         st.warning("Pas de variantes de niveau détectées pour ce monstre.")
+
+        # Afficher les informations disponibles pour les monstres sans variantes
+        st.markdown("#### Informations disponibles")
+
+        # Extraire les statistiques à partir des capacités si disponibles
+        if m.abilities:
+            from src.variant_interp import _extract_stats_from_abilities
+            stats = _extract_stats_from_abilities(m.abilities)
+
+            if any(v > 0 for v in stats.values()):
+                st.write({
+                    "HP max": stats["hp_max"] if stats["hp_max"] > 0 else "—",
+                    "MP max": stats["mp_max"] if stats["mp_max"] > 0 else "—",
+                    "STR": stats["STR"] if stats["STR"] > 0 else "—",
+                    "AGI": stats["AGI"] if stats["AGI"] > 0 else "—",
+                    "INT": stats["INT"] if stats["INT"] > 0 else "—",
+                    "DEX": stats["DEX"] if stats["DEX"] > 0 else "—",
+                    "VIT": stats["VIT"] if stats["VIT"] > 0 else "—",
+                    "Attaque de base": stats["base_attack"] if stats["base_attack"] > 0 else "—",
+                })
+            else:
+                st.info("Aucune statistique disponible dans les capacités.")
+        else:
+            st.info("Aucune information supplémentaire disponible.")
+
         return
 
     lvls = sorted(int(k) for k in m.variants.keys())
