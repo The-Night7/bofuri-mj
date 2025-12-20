@@ -80,11 +80,17 @@ _RE_KV_ANY = re.compile(r"^\s*-\s*\*\*(?P<k>.+?)\s*:\s*\*\*\s*(?P<v>.+?)\s*$")
 # SKILLS — Expressions régulières pour les compétences
 # ============================================================
 
-_RE_SKILL_HEADER = re.compile(r"^\s*#{1,4}\s*\*\*(?P<name>.+?)\*\*\s*$")
-_RE_SKILL_CATEGORY = re.compile(r"^\s*-\s*\*\*Cat[ée]gorie\s*:\s*\*\*\s*(?P<cat>.+?)\s*$", re.IGNORECASE)
-_RE_SKILL_COST = re.compile(r"^\s*-\s*\*\*Co[ûu]t\s*(?:MP|PM)\s*:\s*\*\*\s*(?P<cost>.+?)\s*$", re.IGNORECASE)
-_RE_SKILL_CONDITION = re.compile(r"^\s*-\s*\*\*Condition\s*:\s*\*\*\s*(?P<cond>.+?)\s*$", re.IGNORECASE)
-_RE_SKILL_DESCRIPTION = re.compile(r"^\s*-\s*\*\*Description\s*:\s*\*\*\s*(?P<desc>.+?)\s*$", re.IGNORECASE)
+# Détecte les titres de catégories de compétences (## 🔮 Skills Magiques & Détection)
+_RE_SKILL_CATEGORY_HEADER = re.compile(r"^\s*#{2,3}\s+(?P<emoji>[^\w\s]*)\s*(?P<category>.+?)\s*$")
+
+# Détecte les titres de compétences (### Détection de mana)
+_RE_SKILL_HEADER = re.compile(r"^\s*#{3,4}\s+(?P<name>.+?)\s*$")
+
+# Détecte les attributs des compétences
+_RE_SKILL_DESCRIPTION = re.compile(r"^\s*-\s*\*\*Description\s*:\*\*\s*(?P<desc>.+?)\s*$", re.IGNORECASE)
+_RE_SKILL_COST = re.compile(r"^\s*-\s*\*\*Co[ûu]t\s*(?:MP|PM)\s*:\*\*\s*(?P<cost>.+?)\s*$", re.IGNORECASE)
+_RE_SKILL_CONDITION = re.compile(r"^\s*-\s*\*\*Condition\s*:\*\*\s*(?P<cond>.+?)\s*$", re.IGNORECASE)
+_RE_SKILL_INCANTATION = re.compile(r"^\s*-\s*\*\*Incantation\s*:\*\*\s*(?P<incant>.+?)\s*$", re.IGNORECASE)
 
 
 def parse_monsters_bestiaire(md_text: str) -> Dict[str, Monster]:
@@ -114,10 +120,69 @@ def parse_monsters_bestiaire(md_text: str) -> Dict[str, Monster]:
         cur_level = 10_000 + artificial_level
         return cur_level
 
+    def extract_stats_from_abilities() -> None:
+        """
+    Analyse les abilities pour en extraire les stats si elles y sont stockées
+    """
+        nonlocal cur_hp_max, cur_mp_max, cur_stats, cur_base_attack, cur_monster
+
+        if not cur_abilities:
+            return
+
+        # Parcourir les abilities pour extraire les stats
+        for ability in cur_abilities[:]:
+            # HP: 15/15
+            hp_match = re.match(r"HP\s*:\s*(\d+)(?:/\d+)?", ability)
+            if hp_match and cur_hp_max is None:
+                cur_hp_max = float(hp_match.group(1))
+                cur_abilities.remove(ability)
+                continue
+
+            # MP: 10/10
+            mp_match = re.match(r"MP\s*:\s*(\d+)(?:/\d+)?", ability)
+            if mp_match and cur_mp_max is None:
+                cur_mp_max = float(mp_match.group(1))
+                cur_abilities.remove(ability)
+                continue
+
+            # STR: 4
+            stat_match = re.match(r"(STR|AGI|INT|DEX|VIT)\s*:\s*(\d+)", ability)
+            if stat_match:
+                stat_name = stat_match.group(1)
+                stat_value = float(stat_match.group(2))
+                cur_stats[stat_name] = stat_value
+                cur_abilities.remove(ability)
+                continue
+
+            # Attaque de base: 5
+            atk_match = re.match(r"Attaque\s+de\s+base\s*:\s*(\d+)", ability)
+            if atk_match and cur_base_attack is None:
+                cur_base_attack = atk_match.group(1)
+                cur_abilities.remove(ability)
+                continue
+
+            # Drop: Pollen, Venin
+            drop_match = re.match(r"Drop\s*:\s*(.+)", ability)
+            if drop_match and cur_monster and not cur_monster.drops:
+                drops = [item.strip() for item in drop_match.group(1).split(",")]
+                cur_monster.drops = drops
+                cur_abilities.remove(ability)
+                continue
+
+            # Zone: Forêt
+            zone_match = re.match(r"Zone\s*:\s*(.+)", ability)
+            if zone_match and cur_monster and not cur_monster.zone:
+                cur_monster.zone = zone_match.group(1).strip()
+                cur_abilities.remove(ability)
+                continue
+
     def flush_variant() -> None:
         nonlocal cur_level, cur_label, cur_hp_max, cur_mp_max, cur_stats, cur_base_attack, cur_extra, cur_abilities
         if cur_monster is None:
             return
+
+        # Essayer d'extraire les stats des abilities si elles y sont stockées
+        extract_stats_from_abilities()
 
         if (
                 cur_level is None
@@ -298,17 +363,50 @@ def parse_skills_md(md_text: str) -> Dict[str, Skill]:
   Parse un fichier markdown de compétences et retourne un dictionnaire de Skills.
   Format attendu:
 
-  ## **Nom de la compétence**
-  - **Catégorie:** Type de compétence
-  - **Coût MP:** X MP
-  - **Condition:** Condition d'utilisation
+  ### Nom de la compétence
   - **Description:** Description détaillée
+  - **Coût MP:** X PM
+  - **Condition:** Condition d'utilisation
   """
     skills: Dict[str, Skill] = {}
 
     current_palier: Optional[str] = None
-    cur_skill: Optional[Skill] = None
-    cur_key: Optional[str] = None
+    current_category: Optional[str] = None
+
+    cur_skill_name: Optional[str] = None
+    cur_description: Optional[str] = None
+    cur_cost: Optional[str] = None
+    cur_condition: Optional[str] = None
+    cur_extra: Dict[str, str] = {}
+
+    def flush_skill():
+        nonlocal cur_skill_name, cur_description, cur_cost, cur_condition, cur_extra
+
+        if cur_skill_name:
+            skill = Skill(
+                name=cur_skill_name,
+                category=current_category,
+                description=cur_description,
+                cost_mp=cur_cost,
+                condition=cur_condition,
+                palier=current_palier
+            )
+
+            # Ajouter des informations supplémentaires si nécessaire
+            if cur_extra:
+                for k, v in cur_extra.items():
+                    if not hasattr(skill, k.lower()) or getattr(skill, k.lower()) is None:
+                        setattr(skill, k.lower(), v)
+
+            key = _safe_key(cur_skill_name, skills)
+            skills[key] = skill
+
+        # Réinitialiser pour la prochaine compétence
+        cur_skill_name = None
+        cur_description = None
+        cur_cost = None
+        cur_condition = None
+        cur_extra = {}
 
     for raw in md_text.splitlines():
         line = raw.rstrip("\n")
@@ -319,47 +417,44 @@ def parse_skills_md(md_text: str) -> Dict[str, Skill]:
             current_palier = f"Palier {int(m_pal.group('pal'))}"
             continue
 
+        # Détection d'une catégorie de compétences
+        m_cat = _RE_SKILL_CATEGORY_HEADER.match(line)
+        if m_cat:
+            flush_skill()  # Finaliser la compétence en cours si elle existe
+            category_text = m_cat.group('category')
+            current_category = _strip_md(category_text)
+            continue
+
         # Détection d'une nouvelle compétence
         m_skill = _RE_SKILL_HEADER.match(line)
         if m_skill:
-            # Si on a déjà une compétence en cours, on la sauvegarde
-            if cur_skill is not None and cur_key is not None:
-                skills[cur_key] = cur_skill
-
-            name = _strip_md(m_skill.group("name"))
-            cur_skill = Skill(
-                name=name,
-                category=None,
-                description=None,
-                cost_mp=None,
-                condition=None,
-                palier=current_palier
-            )
-            cur_key = _safe_key(name, skills)
+            flush_skill()  # Finaliser la compétence précédente
+            cur_skill_name = _strip_md(m_skill.group("name"))
             continue
 
-        if cur_skill is None:
+        # Si on n'a pas encore de nom de compétence, on continue
+        if not cur_skill_name:
             continue
 
         # Extraction des attributs de la compétence
-        m_cat = _RE_SKILL_CATEGORY.match(line)
-        if m_cat:
-            cur_skill.category = _strip_md(m_cat.group("cat"))
+        m_desc = _RE_SKILL_DESCRIPTION.match(line)
+        if m_desc:
+            cur_description = _strip_md(m_desc.group("desc"))
             continue
 
         m_cost = _RE_SKILL_COST.match(line)
         if m_cost:
-            cur_skill.cost_mp = _strip_md(m_cost.group("cost"))
+            cur_cost = _strip_md(m_cost.group("cost"))
             continue
 
         m_cond = _RE_SKILL_CONDITION.match(line)
         if m_cond:
-            cur_skill.condition = _strip_md(m_cond.group("cond"))
+            cur_condition = _strip_md(m_cond.group("cond"))
             continue
 
-        m_desc = _RE_SKILL_DESCRIPTION.match(line)
-        if m_desc:
-            cur_skill.description = _strip_md(m_desc.group("desc"))
+        m_incant = _RE_SKILL_INCANTATION.match(line)
+        if m_incant:
+            cur_extra["incantation"] = _strip_md(m_incant.group("incant"))
             continue
 
         # Capture des attributs supplémentaires avec le pattern générique
@@ -368,19 +463,21 @@ def parse_skills_md(md_text: str) -> Dict[str, Skill]:
             k = _strip_md(m_kv.group("k")).lower()
             v = _strip_md(m_kv.group("v"))
 
-            # Si c'est un attribut qu'on n'a pas encore capturé explicitement
-            if k == "description" and not cur_skill.description:
-                cur_skill.description = v
-            elif k == "catégorie" and not cur_skill.category:
-                cur_skill.category = v
-            elif k in ("coût mp", "cout mp", "coût pm", "cout pm") and not cur_skill.cost_mp:
-                cur_skill.cost_mp = v
-            elif k == "condition" and not cur_skill.condition:
-                cur_skill.condition = v
+            if k == "description" and not cur_description:
+                cur_description = v
+            elif k in ("coût mp", "cout mp", "coût pm", "cout pm") and not cur_cost:
+                cur_cost = v
+            elif k == "condition" and not cur_condition:
+                cur_condition = v
+            else:
+                cur_extra[k] = v
+
+        # Si on rencontre une ligne séparatrice (---), on considère que c'est la fin de la compétence actuelle
+        if line.strip() == "---":
+            flush_skill()
 
     # Ne pas oublier la dernière compétence
-    if cur_skill is not None and cur_key is not None:
-        skills[cur_key] = cur_skill
+    flush_skill()
 
     return skills
 

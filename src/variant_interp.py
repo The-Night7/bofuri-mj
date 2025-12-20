@@ -10,7 +10,8 @@ ne stocke que des stats min/max (ou quelques paliers).
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+import re
+from typing import Any, Dict, Optional, Tuple, List
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -29,6 +30,51 @@ def _coerce_level_key(k: Any) -> Optional[int]:
     return None
 
 
+def _extract_stats_from_abilities(abilities: List[str]) -> Dict[str, float]:
+  """
+  Extrait les statistiques à partir d'une liste de capacités au format texte
+  """
+  stats = {
+    "hp_max": 0.0,
+    "mp_max": 0.0,
+    "STR": 0.0,
+    "AGI": 0.0,
+    "INT": 0.0,
+    "DEX": 0.0,
+    "VIT": 0.0,
+    "base_attack": 0.0
+  }
+
+  for ability in abilities:
+    # HP: 15/15
+    hp_match = re.match(r"HP\s*:\s*(\d+)(?:/\d+)?", ability)
+    if hp_match:
+      stats["hp_max"] = float(hp_match.group(1))
+      continue
+
+    # MP: 10/10
+    mp_match = re.match(r"MP\s*:\s*(\d+)(?:/\d+)?", ability)
+    if mp_match:
+      stats["mp_max"] = float(mp_match.group(1))
+      continue
+
+    # STR: 4
+    stat_match = re.match(r"(STR|AGI|INT|DEX|VIT)\s*:\s*(\d+)", ability)
+    if stat_match:
+      stat_name = stat_match.group(1)
+      stat_value = float(stat_match.group(2))
+      stats[stat_name] = stat_value
+      continue
+
+    # Attaque de base: 5
+    atk_match = re.match(r"Attaque\s+de\s+base\s*:\s*(\d+)", ability)
+    if atk_match:
+      stats["base_attack"] = float(atk_match.group(1))
+      continue
+
+  return stats
+
+
 def _extract_variant_fields(v: Any) -> Dict[str, float]:
   """
   Accepte:
@@ -41,7 +87,12 @@ def _extract_variant_fields(v: Any) -> Dict[str, float]:
   else:
     get = lambda key, default=None: getattr(v, key, default)
 
-  return {
+  # Vérifier si les stats sont à 0 et s'il y a des abilities
+  extra = _extract_extra(v)
+  abilities = extra.get("abilities", [])
+
+  # Si toutes les stats principales sont à 0 et qu'il y a des abilities, essayer de les extraire
+  base_stats = {
     "hp_max": float(get("hp_max", 0.0) or 0.0),
     "mp_max": float(get("mp_max", 0.0) or 0.0),
     "STR": float(get("STR", 0.0) or 0.0),
@@ -52,6 +103,16 @@ def _extract_variant_fields(v: Any) -> Dict[str, float]:
     # base_attack peut être None dans tes données
     "base_attack": float(get("base_attack", 0.0) or 0.0),
   }
+
+  # Si toutes les stats principales sont à 0 et qu'il y a des abilities
+  if all(v == 0.0 for k, v in base_stats.items() if k != "base_attack") and abilities:
+    ability_stats = _extract_stats_from_abilities(abilities)
+    # Mettre à jour les stats avec celles extraites des abilities
+    for k, v in ability_stats.items():
+      if v > 0.0:  # Ne remplacer que si la valeur extraite est > 0
+        base_stats[k] = v
+
+  return base_stats
 
 
 def _extract_extra(v: Any) -> Dict[str, Any]:
