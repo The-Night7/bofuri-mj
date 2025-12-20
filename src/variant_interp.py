@@ -139,9 +139,31 @@ def _bounds_for_level(levels: list[int], lvl: int) -> Tuple[int, int]:
   return (l0, l1)
 
 
+def _extract_level_from_range(level_range: Optional[str]) -> int:
+  """Extrait un niveau à partir d'une chaîne de plage de niveaux"""
+  if not level_range:
+    return 1
+
+  # Cas "1-5" -> prend la moyenne
+  if "-" in level_range:
+    try:
+      min_lvl, max_lvl = map(int, level_range.split("-"))
+      return (min_lvl + max_lvl) // 2
+    except:
+      pass
+
+  # Essaie d'extraire un nombre simple
+  match = re.search(r'\d+', level_range)
+  if match:
+    return int(match.group(0))
+
+  return 1  # Niveau par défaut
+
+
 def interpolated_variant(monster: Any, lvl: int) -> Optional[Dict[str, Any]]:
   """
   monster.variants doit être un dict dont les clés sont des niveaux (int ou str).
+  Si monster n'a pas de variants mais a des abilities, extrait les stats des abilities.
 
   Retour:
     dict:
@@ -157,10 +179,37 @@ def interpolated_variant(monster: Any, lvl: int) -> Optional[Dict[str, Any]]:
         "base_attack": ...,
         "extra": {...}
       }
-    ou None si pas de variants
+    ou None si pas de variants et pas d'abilities
   """
   variants = getattr(monster, "variants", None)
-  if not variants:
+
+  # Si pas de variants mais des abilities, on construit une variante à partir des abilities
+  if not variants or not variants:
+    abilities = getattr(monster, "abilities", None)
+    if abilities:
+      # Extraire les stats des abilities
+      stats = _extract_stats_from_abilities(abilities)
+
+      # Déterminer le niveau à partir du level_range si disponible
+      level_range = getattr(monster, "level_range", None)
+      monster_level = _extract_level_from_range(level_range)
+
+      # Si le niveau demandé est différent, on ajuste légèrement les stats
+      level_factor = lvl / monster_level if monster_level > 0 else 1
+
+      # Construire une variante avec les stats extraites
+      return {
+        "level": lvl,
+        "hp_max": _round_stat(stats["hp_max"] * level_factor),
+        "mp_max": _round_stat(stats["mp_max"] * level_factor),
+        "STR": _round_stat(stats["STR"] * level_factor),
+        "AGI": _round_stat(stats["AGI"] * level_factor),
+        "INT": _round_stat(stats["INT"] * level_factor),
+        "DEX": _round_stat(stats["DEX"] * level_factor),
+        "VIT": _round_stat(stats["VIT"] * level_factor),
+        "base_attack": stats["base_attack"] * level_factor,
+        "extra": {"abilities": abilities}
+      }
     return None
 
   # normaliser niveaux

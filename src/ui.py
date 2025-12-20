@@ -55,118 +55,93 @@ def _sorted_paliers(monsters: Dict[str, Monster]) -> List[str]:
 
 
 def render_bestiaire_by_palier(comp: Compendium) -> None:
-    if not comp.monsters:
-        st.info("Compendium vide.")
-        return
+    """
+    Affiche le bestiaire organisé par palier
+    """
+    # Regrouper les monstres par palier
+    paliers = {}
+    for monster_key, monster in comp.monsters.items():
+        palier = monster.palier or "Inconnu"
+        if palier not in paliers:
+            paliers[palier] = []
+        paliers[palier].append((monster_key, monster))
 
-    # group by palier
-    by_palier: Dict[str, List[tuple[str, Monster]]] = {}
-    for key, m in comp.monsters.items():
-        p = m.palier or "Palier ?"
-        by_palier.setdefault(p, []).append((key, m))
+    # Trier les paliers
+    sorted_paliers = sorted(paliers.keys())
 
-    paliers_sorted = sorted(by_palier.keys(), key=lambda x: (999 if "?" in x else int(x.split()[-1])))
-    palier = st.selectbox("Palier", paliers_sorted, key="best_palier")
+    # Créer un accordéon pour chaque palier
+    for palier in sorted_paliers:
+        with st.expander(f"{palier} ({len(paliers[palier])} monstres)"):
+            # Afficher les monstres de ce palier
+            for monster_key, monster in paliers[palier]:
+                col1, col2 = st.columns([1, 3])
 
-    # Stocker les paires (clé, monstre) triées par nom
-    mobs_with_keys = sorted(by_palier[palier], key=lambda km: km[1].name.lower())
+                with col1:
+                    st.markdown(f"### {monster.name}")
+                    if monster.level_range:
+                        st.write(f"Niveau: {monster.level_range}")
+                    if monster.rarity:
+                        st.write(f"Rareté: {monster.rarity}")
+                    if monster.zone:
+                        st.write(f"Zone: {monster.zone}")
 
-    # Créer un dictionnaire pour mapper les noms affichés aux clés
-    name_to_key = {m.name: k for k, m in mobs_with_keys}
+                with col2:
+                    # Afficher les variantes si disponibles
+                    if monster.variants and len(monster.variants) > 0:
+                        # Créer des onglets pour chaque variante
+                        variant_levels = sorted(monster.variants.keys())
+                        tabs = st.tabs([f"Niveau {lvl}" for lvl in variant_levels])
 
-    # Afficher les noms pour la sélection
-    mob_names = [m.name for _, m in mobs_with_keys]
-    selected_name = st.selectbox("Monstre", mob_names, key="best_monster")
+                        for i, lvl in enumerate(variant_levels):
+                            variant = monster.variants[lvl]
+                            with tabs[i]:
+                                col_a, col_b = st.columns(2)
+                                with col_a:
+                                    st.write(f"**HP**: {variant.hp_max}")
+                                    st.write(f"**MP**: {variant.mp_max}")
+                                    st.write(f"**Base Attack**: {variant.base_attack}")
+                                with col_b:
+                                    st.write(f"**STR**: {variant.STR}")
+                                    st.write(f"**AGI**: {variant.AGI}")
+                                    st.write(f"**INT**: {variant.INT}")
+                                    st.write(f"**DEX**: {variant.DEX}")
+                                    st.write(f"**VIT**: {variant.VIT}")
+                    else:
+                        # Si pas de variantes, afficher les stats depuis les abilities
+                        if monster.abilities:
+                            # Extraire les stats des abilities
+                            from src.variant_interp import _extract_stats_from_abilities, _extract_level_from_range
 
-    # Récupérer la clé correspondante au nom sélectionné
-    selected_key = name_to_key[selected_name]
+                            stats = _extract_stats_from_abilities(monster.abilities)
+                            monster_level = _extract_level_from_range(monster.level_range)
 
-    # Utiliser cette clé pour récupérer le monstre
-    m = comp.monsters[selected_key]
+                            st.write(f"**Niveau estimé**: {monster_level}")
 
-    st.markdown(f"### **{m.name}**")
-    st.write({
-        "Palier": m.palier or "—",
-        "Niveaux": m.level_range or "—",
-        "Rareté": m.rarity or "—",
-        "Zone": m.zone or "—",
-        "Drops": ", ".join(m.drops or []) or "—",
-    })
+                            col_a, col_b = st.columns(2)
+                            with col_a:
+                                st.write(f"**HP**: {stats['hp_max']}")
+                                st.write(f"**MP**: {stats['mp_max']}")
+                                if stats['base_attack'] > 0:
+                                    st.write(f"**Base Attack**: {stats['base_attack']}")
+                            with col_b:
+                                st.write(f"**STR**: {stats['STR']}")
+                                st.write(f"**AGI**: {stats['AGI']}")
+                                st.write(f"**INT**: {stats['INT']}")
+                                st.write(f"**DEX**: {stats['DEX']}")
+                                st.write(f"**VIT**: {stats['VIT']}")
 
-    if m.abilities:
-        st.markdown("#### Compétences (bestiaire)")
-        for a in m.abilities:
-            st.write(f"- {a}")
+                    # Afficher les drops et capacités
+                    if monster.drops:
+                        st.write("**Drops:**")
+                        for drop in monster.drops:
+                            st.write(f"- {drop}")
 
-    if not m.variants:
-        st.warning("Pas de variantes de niveau détectées pour ce monstre.")
+                    if monster.abilities:
+                        st.write("**Capacités:**")
+                        for ability in monster.abilities:
+                            st.write(f"- {ability}")
 
-        # Afficher les informations disponibles pour les monstres sans variantes
-        st.markdown("#### Informations disponibles")
-
-        # Extraire les statistiques à partir des capacités si disponibles
-        if m.abilities:
-            from src.variant_interp import _extract_stats_from_abilities
-            stats = _extract_stats_from_abilities(m.abilities)
-
-            if any(v > 0 for v in stats.values()):
-                st.write({
-                    "HP max": stats["hp_max"] if stats["hp_max"] > 0 else "—",
-                    "MP max": stats["mp_max"] if stats["mp_max"] > 0 else "—",
-                    "STR": stats["STR"] if stats["STR"] > 0 else "—",
-                    "AGI": stats["AGI"] if stats["AGI"] > 0 else "—",
-                    "INT": stats["INT"] if stats["INT"] > 0 else "—",
-                    "DEX": stats["DEX"] if stats["DEX"] > 0 else "—",
-                    "VIT": stats["VIT"] if stats["VIT"] > 0 else "—",
-                    "Attaque de base": stats["base_attack"] if stats["base_attack"] > 0 else "—",
-                })
-            else:
-                st.info("Aucune statistique disponible dans les capacités.")
-        else:
-            st.info("Aucune information supplémentaire disponible.")
-
-        return
-
-    lvls = sorted(int(k) for k in m.variants.keys())
-    if len(lvls) >= 2:
-        lvl = st.slider(
-            "Niveau (progressif)",
-            min_value=int(lvls[0]),
-            max_value=int(lvls[-1]),
-            value=int(lvls[0]),
-            key="best_lvl_slider",
-        )
-    else:
-        # Streamlit interdit slider min==max
-        only = int(lvls[0])
-        st.caption("Monstre avec une seule variante de niveau.")
-        lvl = st.number_input(
-            "Niveau",
-            min_value=only,
-            max_value=only,
-            value=only,
-            step=1,
-            disabled=True,
-            key="best_lvl_single",
-        )
-
-    v = interpolated_variant(m, int(lvl))
-    if v is None:
-        st.warning("Aucun variant disponible")
-        return
-
-    st.markdown("#### Stats")
-    st.write({
-        "HP max": v["hp_max"],
-        "MP max": v["mp_max"],
-        "STR": v["STR"],
-        "AGI": v["AGI"],
-        "INT": v["INT"],
-        "DEX": v["DEX"],
-        "VIT": v["VIT"],
-        "Attaque de base": (v.get("base_attack") if v.get("base_attack") is not None else "—"),
-        "Extra": v.get("extra") or {},
-    })
+                st.divider()
 
 
 def render_player_editor(players: List[Player], on_save: Callable[[], None]) -> None:
@@ -328,159 +303,144 @@ def _monster_to_runtime_manual(
     )
 
 
-def render_encounter_builder(
-        enc: EncounterState,
-        players: List[Player],
-        comp: Compendium,
-        on_save: Callable[[], None],
-) -> None:
-    st.subheader("Préparer l'encounter (multi-PJ / multi-mobs)")
+def render_encounter_builder(enc: EncounterState, players: List[Player], comp: Compendium, on_save) -> None:
+    """
+    Interface pour construire un encounter
+    """
+    st.subheader("Builder")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("### Ajouter un PJ")
-        if not players:
-            st.warning("Aucun PJ dans players.json")
-        else:
-            pname = st.selectbox("PJ", [p.name for p in players], key="enc_add_pj")
-            if st.button("Ajouter PJ à l'encounter", key="btn_add_pj"):
-                p = next(x for x in players if x.name == pname)
-                rt = _player_to_runtime(p)
-                enc.participants.append(Participant(id=str(uuid.uuid4()), side="player", runtime=rt))
-                enc.recompute_round()
+    # Afficher les participants actuels
+    if enc.participants:
+        st.write("### Participants")
+        cols = st.columns(4)
+        for i, p in enumerate(enc.participants):
+            with cols[i % 4]:
+                st.write(f"**{p.runtime.name}** ({p.side})")
+                st.write(f"Lvl {p.runtime.level} - {p.runtime.kind}")
+                st.write(f"HP: {p.runtime.hp}/{p.runtime.hp_max}")
+                st.write(f"MP: {p.runtime.mp}/{p.runtime.mp_max}")
+                if st.button("❌", key=f"remove_{p.id}"):
+                    enc.participants = [x for x in enc.participants if x.id != p.id]
+                    on_save()
+                    st.rerun()
+
+    # Ajouter un joueur
+    st.write("### Ajouter un joueur")
+    if not players:
+        st.warning("Aucun joueur défini. Créez-en dans l'onglet PJ.")
+    else:
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            player_idx = st.selectbox("Joueur", range(len(players)), format_func=lambda i: players[i].name)
+        with col2:
+            reset_hp = st.checkbox("Reset HP/MP", value=True)
+        with col3:
+            if st.button("➕ Ajouter PJ"):
+                player = players[player_idx]
+
+                # Créer une RuntimeEntity à partir du Player
+                runtime = RuntimeEntity(
+                    name=player.name,
+                    kind="PJ",
+                    level=player.level,
+                    hp_max=player.hp_max,
+                    mp_max=player.mp_max,
+                    STR=player.STR,
+                    AGI=player.AGI,
+                    INT=player.INT,
+                    DEX=player.DEX,
+                    VIT=player.VIT,
+                    hp=player.hp_max if reset_hp else (player.hp or player.hp_max),
+                    mp=player.mp_max if reset_hp else (player.mp or player.mp_max)
+                )
+
+                # Ajouter le participant
+                enc.participants.append(
+                    Participant(
+                        id=str(uuid.uuid4()),
+                        side="player",
+                        runtime=runtime
+                    )
+                )
                 on_save()
                 st.rerun()
 
-    with c2:
-        st.markdown("### Ajouter un mob")
-        if not comp.monsters:
-            st.warning("Compendium vide.")
+    # Ajouter un monstre
+    st.write("### Ajouter un monstre")
+    if not comp.monsters:
+        st.warning("Aucun monstre dans le compendium.")
+    else:
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+
+        # Liste des monstres
+        monster_names = [m.name for m in comp.monsters.values()]
+        monster_keys = list(comp.monsters.keys())
+
+        with col1:
+            monster_idx = st.selectbox("Monstre", range(len(monster_names)), format_func=lambda i: monster_names[i])
+
+        monster_key = monster_keys[monster_idx]
+        monster = comp.monsters[monster_key]
+
+        # Déterminer les niveaux disponibles
+        if monster.variants and len(monster.variants) > 0:
+            available_levels = sorted(monster.variants.keys())
+            default_level = available_levels[0]
         else:
-            by_palier: Dict[str, List[tuple[str, Monster]]] = {}
-            for key, m in comp.monsters.items():
-                by_palier.setdefault(m.palier or "Palier ?", []).append((key, m))
+            # Si pas de variantes, utiliser le niveau estimé à partir du level_range
+            from src.variant_interp import _extract_level_from_range
+            default_level = _extract_level_from_range(monster.level_range)
+            available_levels = [default_level]
 
-            paliers = sorted(by_palier.keys(), key=lambda x: (999 if "?" in x else int(x.split()[-1])))
-            pal = st.selectbox("Palier", paliers, key="enc_add_mob_palier")
+        with col2:
+            # Niveau du monstre
+            level = st.number_input("Niveau", min_value=1, value=default_level, step=1)
 
-            # Stocker les paires (clé, monstre) triées par nom
-            mobs_with_keys = sorted(by_palier[pal], key=lambda km: km[1].name.lower())
+        with col3:
+            # Type de monstre (normal, élite, boss)
+            kind = st.selectbox("Type", ["Mob", "Elite", "Boss"])
 
-            # Créer un dictionnaire pour mapper les noms affichés aux clés
-            name_to_key = {m.name: k for k, m in mobs_with_keys}
+        with col4:
+            if st.button("➕ Ajouter monstre"):
+                # Obtenir les stats du monstre pour ce niveau
+                from src.variant_interp import interpolated_variant
 
-            # Afficher les noms pour la sélection
-            mob_names = [m.name for _, m in mobs_with_keys]
-            selected_name = st.selectbox("Monstre", mob_names, key="enc_add_mob_name")
+                variant_data = interpolated_variant(monster, level)
 
-            # Récupérer la clé correspondante au nom sélectionné
-            selected_key = name_to_key[selected_name]
-
-            # Utiliser cette clé pour récupérer le monstre
-            m = comp.monsters[selected_key]
-
-            # CAS 1 — variantes présentes
-            if m.variants:
-                lvls = sorted(int(k) for k in m.variants.keys())
-                if len(lvls) >= 2:
-                    lvl = st.slider(
-                        "Niveau",
-                        min_value=int(lvls[0]),
-                        max_value=int(lvls[-1]),
-                        value=int(lvls[0]),
-                        key="enc_add_mob_lvl",
+                if variant_data:
+                    # Créer une RuntimeEntity à partir des données de la variante
+                    runtime = RuntimeEntity(
+                        name=monster.name,
+                        kind=kind,
+                        level=variant_data["level"],
+                        hp_max=variant_data["hp_max"],
+                        mp_max=variant_data["mp_max"],
+                        STR=variant_data["STR"],
+                        AGI=variant_data["AGI"],
+                        INT=variant_data["INT"],
+                        DEX=variant_data["DEX"],
+                        VIT=variant_data["VIT"],
+                        hp=variant_data["hp_max"],
+                        mp=variant_data["mp_max"],
+                        base_attack=variant_data.get("base_attack"),
+                        zone=monster.zone,
+                        drops=monster.drops,
+                        abilities=monster.abilities,
+                        extra=variant_data.get("extra")
                     )
+
+                    # Ajouter le participant
+                    enc.participants.append(
+                        Participant(
+                            id=str(uuid.uuid4()),
+                            side="mob",
+                            runtime=runtime
+                        )
+                    )
+                    on_save()
+                    st.rerun()
                 else:
-                    only = int(lvls[0])
-                    st.caption("Monstre avec une seule variante de niveau.")
-                    lvl = st.number_input(
-                        "Niveau",
-                        min_value=only,
-                        max_value=only,
-                        value=only,
-                        step=1,
-                        disabled=True,
-                        key="enc_add_mob_lvl_single",
-                    )
-
-                if st.button("Ajouter Mob à l'encounter", key="btn_add_mob"):
-                    rt = _monster_to_runtime(m, int(lvl))
-                    enc.participants.append(Participant(id=str(uuid.uuid4()), side="mob", runtime=rt))
-                    enc.recompute_round()
-                    on_save()
-                    st.rerun()
-
-            # CAS 2 — pas de variantes => fallback manuel (au cas où)
-            else:
-                st.warning("Ce monstre n'a pas de variantes. Ajout possible via saisie manuelle des stats.")
-                lvl = st.number_input(
-                    "Niveau (manuel)",
-                    min_value=1,
-                    max_value=999,
-                    value=1,
-                    step=1,
-                    key="enc_add_mob_lvl_manual",
-                )
-
-                cA, cB, cC = st.columns(3)
-                with cA:
-                    hp_max = st.number_input("HP max", min_value=0.0, value=50.0, step=10.0, key="enc_mob_hp")
-                    mp_max = st.number_input("MP max", min_value=0.0, value=10.0, step=5.0, key="enc_mob_mp")
-                    base_attack = st.number_input("Attaque de base (optionnel)", min_value=0.0, value=0.0, step=1.0,
-                                                  key="enc_mob_ba")
-                with cB:
-                    STR = st.number_input("STR", min_value=0.0, value=5.0, step=1.0, key="enc_mob_str")
-                    VIT = st.number_input("VIT", min_value=0.0, value=5.0, step=1.0, key="enc_mob_vit")
-                with cC:
-                    AGI = st.number_input("AGI", min_value=0.0, value=5.0, step=1.0, key="enc_mob_agi")
-                    DEX = st.number_input("DEX", min_value=0.0, value=5.0, step=1.0, key="enc_mob_dex")
-                    INT = st.number_input("INT", min_value=0.0, value=5.0, step=1.0, key="enc_mob_int")
-
-                if st.button("Ajouter Mob (manuel) à l'encounter", key="btn_add_mob_manual"):
-                    stats = {"hp_max": hp_max, "mp_max": mp_max, "STR": STR, "AGI": AGI, "INT": INT, "DEX": DEX,
-                             "VIT": VIT}
-                    rt = _monster_to_runtime_manual(
-                        m=m,
-                        lvl=int(lvl),
-                        stats=stats,
-                        base_attack=(float(base_attack) if float(base_attack) > 0 else None),
-                    )
-                    enc.participants.append(Participant(id=str(uuid.uuid4()), side="mob", runtime=rt))
-                    enc.recompute_round()
-                    on_save()
-                    st.rerun()
-
-    st.divider()
-    st.markdown("### Participants actuels")
-    if not enc.participants:
-        st.caption("Aucun participant.")
-        return
-
-    for p in enc.participants:
-        st.write({
-            "id": p.id[:8],
-            "side": p.side,
-            "name": p.runtime.name,
-            "HP": f"{p.runtime.hp:.1f}/{p.runtime.hp_max:.1f}",
-            "MP": f"{p.runtime.mp:.1f}/{p.runtime.mp_max:.1f}",
-            "STR": p.runtime.STR,
-            "VIT": p.runtime.VIT,
-        })
-
-    c3, c4 = st.columns([1, 1])
-    if c3.button("Reset encounter (vide)", key="btn_enc_reset"):
-        enc.participants = []
-        enc.turn_index = 0
-        enc.recompute_round()
-        enc.log = []
-        on_save()
-        st.rerun()
-
-    if c4.button("Supprimer les morts (HP<=0)", key="btn_enc_prune_dead"):
-        enc.participants = [pp for pp in enc.participants if pp.runtime.hp > 0]
-        enc.recompute_round()
-        on_save()
-        st.rerun()
+                    st.error(f"Impossible de créer une variante pour {monster.name} niveau {level}")
 
 
 def render_turn_panel(enc: EncounterState) -> None:
