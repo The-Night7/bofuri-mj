@@ -5,6 +5,7 @@
 > - Quand une fiche **n’avait pas** “Attaque de base”, j’ai **ajouté** : *Attaque de base = STR*.
 > - Ajustements légers “anti-stats trop basses” sur quelques mobs bas niveau (AGI/DEX/INT/VIT) sans toucher au reste.
 > - **Ajout systématique d’une ligne “Niveau X:”** même quand il n’y a qu’un seul niveau.
+> - Format imposé : **Niveau X:** (sans texte additionnel sur la même ligne).
 
 ---
 
@@ -143,7 +144,7 @@
 - **Drop:** Cocon d'Ortifleur, Herbes apaisantes
 - **Zone:** Forêt
 
-**Niveau 12 (Élite - Donjon Hydre):**
+**Niveau 12:**
 - **HP:** 80/80
 - **MP:** 30/30
 - **STR:** 40
@@ -304,7 +305,7 @@
 - **Drop:** Gelée glissante, Perle de slime
 - **Zone:** Grande Plaine
 
-**Niveau 12 (Élite - Donjon Hydre):**
+**Niveau 12:**
 - **HP:** 150/150
 - **MP:** 45/45
 - **STR:** 40
@@ -440,7 +441,9 @@
 
 ### **Ours en colère** (Lvl 20 / Lvl 20 Élite)
 
-**Version Standard (Nature) — Niveau 20:**
+**Version Standard (Nature):**
+
+**Niveau 20:**
 - **HP:** 180/180
 - **MP:** 25/25
 - **STR:** 75
@@ -452,7 +455,9 @@
 - **Drop:** Griffe d'ours, Fourrure d'ours
 - **Zone:** Nature
 
-**Version Élite (Donjon) — Niveau 20:**
+**Version Élite (Donjon):**
+
+**Niveau 20:**
 - **HP:** 250/250
 - **MP:** 35/35
 - **STR:** 90
@@ -468,7 +473,7 @@
 
 ### **Roi de la nature: Cerf de vie** (Boss) 👑
 
-**Niveau 20 (Boss):**
+**Niveau 20:**
 - **HP:** 1500/1500
 - **MP:** 300/300
 - **STR:** 100
@@ -508,32 +513,32 @@
 
 ### **Phénix de glace** (Lvl 25 Élite) 👑 *Boss Event*
 
-**Niveau 25 — Phase 1:**
-- **HP:** 2500/2500
-- **MP:** 400/400
-- **STR:** 100
-- **AGI:** 70
-- **INT:** 120
-- **DEX:** 65
-- **VIT:** 90
-- **Attaque de base:** 100
-- **Compétences:**
-    - **Pluie de plumes:** 50/plume
-    - **Javelot de glace:** 150
-    - **Gel instantané:** Glacifie attaques liquides (réduction dégâts, sauf après attaque vent)
-    - **Laserglace:** 200
-- **Drop (Phase 1):** Plume de glace, Cristal gelé
-
-**Niveau 25 — Phase 2: Phénix des ténèbres noires** (à 30% HP)
-- **HP:** 750/2500 (restant)
-- **MP:** 200/400
-- **STR:** 200
-- **INT:** 150
-- **Attaque de base:** 200 x3
-- **Attaque de flammes noires:** 200 x3
-- **Durée:** 3 tours
-- **Drop (Phase 2):** Plume des ténèbres, Cœur de phénix, Essence duale
-- **Zone:** Event
+**Niveau 25:**
+- **Phase 1:**
+  - **HP:** 2500/2500
+  - **MP:** 400/400
+  - **STR:** 100
+  - **AGI:** 70
+  - **INT:** 120
+  - **DEX:** 65
+  - **VIT:** 90
+  - **Attaque de base:** 100
+  - **Compétences:**
+      - **Pluie de plumes:** 50/plume
+      - **Javelot de glace:** 150
+      - **Gel instantané:** Glacifie attaques liquides (réduction dégâts, sauf après attaque vent)
+      - **Laserglace:** 200
+  - **Drop (Phase 1):** Plume de glace, Cristal gelé
+- **Phase 2: Phénix des ténèbres noires** (à 30% HP)
+  - **HP:** 750/2500 (restant)
+  - **MP:** 200/400
+  - **STR:** 200
+  - **INT:** 150
+  - **Attaque de base:** 200 x3
+  - **Attaque de flammes noires:** 200 x3
+  - **Durée:** 3 tours
+  - **Drop (Phase 2):** Plume des ténèbres, Cœur de phénix, Essence duale
+  - **Zone:** Event
 
 ---
 
@@ -660,29 +665,29 @@
 
 ### **Chevalier démoniaque** (Lvl 25 Élite) 👑 *Monstre Rare*
 
-**Niveau 25 — Phase 1:**
-- **HP:** 1500/1500
-- **MP:** 200/200
-- **STR:** 200
-- **AGI:** 50
-- **INT:** 70
-- **DEX:** 55
-- **VIT:** 75
-- **Attaque de base:** 200
-- **Lien maudit:** Immobilise + Empêche fuite/skills offensifs ou déplacement
-- **Drop (Phase 1):** Armure démoniaque, Chaînes maudites
-
-**Niveau 25 — Phase 2** (à 50% HP):
-- **HP:** 750/1500
-- **Goinfrerie:** Enferme victime dans ventre + Poison gastrique (dégâts durée)
-- **Drop (Phase 2):** Épée démoniaque, Cœur corrompu
-- **Zone:** Zone corrompue
+**Niveau 25:**
+- **Phase 1:**
+  - **HP:** 1500/1500
+  - **MP:** 200/200
+  - **STR:** 200
+  - **AGI:** 50
+  - **INT:** 70
+  - **DEX:** 55
+  - **VIT:** 75
+  - **Attaque de base:** 200
+  - **Lien maudit:** Immobilise + Empêche fuite/skills offensifs ou déplacement
+  - **Drop (Phase 1):** Armure démoniaque, Chaînes maudites
+- **Phase 2** (à 50% HP):
+  - **HP:** 750/1500
+  - **Goinfrerie:** Enferme victime dans ventre + Poison gastrique (dégâts durée)
+  - **Drop (Phase 2):** Épée démoniaque, Cœur corrompu
+  - **Zone:** Zone corrompue
 
 ---
 
 ### **Gardien du 3ème palier: Terongor** (Boss Élite) 👑
 
-**Niveau 25 (Gardien):**
+**Niveau 25:**
 - **HP:** 3000/3000
 - **MP:** 400/400
 - **STR:** 300
@@ -701,22 +706,22 @@
 
 ### **Roi mécanique** (Lvl 30 Élite) 👑 *Monstre Rare*
 
-**Niveau 30 — Phase 1:**
-- **HP:** 3500/3500
-- **MP:** 500/500
-- **STR:** 100
-- **AGI:** 70
-- **INT:** 140
-- **DEX:** 90
-- **VIT:** 120
-- **Attaque de base:** 100/projectile
-- **Drop (Phase 1):** Pièces mécaniques, Circuit magique
-
-**Niveau 30 — Phase 2** (à 50% HP):
-- **HP:** 1750/3500
-- **Obtention skill:** "Dieu mécanique" (pour vainqueur)
-- **Drop (Phase 2):** Cœur mécanique, Blueprint légendaire, Core du roi
-- **Zone:** Zone mécanique
+**Niveau 30:**
+- **Phase 1:**
+  - **HP:** 3500/3500
+  - **MP:** 500/500
+  - **STR:** 100
+  - **AGI:** 70
+  - **INT:** 140
+  - **DEX:** 90
+  - **VIT:** 120
+  - **Attaque de base:** 100/projectile
+  - **Drop (Phase 1):** Pièces mécaniques, Circuit magique
+- **Phase 2** (à 50% HP):
+  - **HP:** 1750/3500
+  - **Obtention skill:** "Dieu mécanique" (pour vainqueur)
+  - **Drop (Phase 2):** Cœur mécanique, Blueprint légendaire, Core du roi
+  - **Zone:** Zone mécanique
 
 ---
 
@@ -778,7 +783,7 @@
 
 ### **Gardien du 4ème palier: Garde-Lave Oursobot** (Lvl 40 Élite) 👑
 
-**Niveau 40 (Gardien):**
+**Niveau 40:**
 - **HP:** 4000/4000
 - **MP:** 600/600
 - **STR:** 400
@@ -1085,7 +1090,7 @@
 
 ### **Gardienne du 5ème palier: Kyubi masqué au chakra bleu** (Lvl 50 Élite) 👑
 
-**Niveau 50 (Gardienne):**
+**Niveau 50:**
 - **HP:** 5000/5000
 - **MP:** 900/900
 - **STR:** 1000
@@ -1150,7 +1155,7 @@
 
 ### **Gardienne du 6ème palier: Nuage-médusé** (Lvl 55 Élite) 👑
 
-**Niveau 55 (Gardienne):**
+**Niveau 55:**
 - **HP:** 5500/5500
 - **MP:** 1000/1000
 - **STR:** 1000
@@ -1320,25 +1325,25 @@
 
 ### **Élémentaire de lave/glace** (Lvl 60 Élite) 👑
 
-**Niveau 60 — Phase 1:**
-- **HP:** 6000/6000
-- **MP:** 1200/1200
-- **STR:** 200
-- **AGI:** 110
-- **INT:** 250
-- **DEX:** 140
-- **VIT:** 220
-- **Attaque de base:** 200
-- **Drop (Phase 1):** Cristal de lave, Glace éternelle
-
-**Niveau 60 — Phase 2:**
-- **HP:** 1000/1000
-- **MP:** 600/1200
-- **STR:** 250
-- **INT:** 300
-- **Attaque de base:** 250
-- **Drop (Phase 2):** Noyau élémentaire, Essence duale
-- **Zone:** Event
+**Niveau 60:**
+- **Phase 1:**
+  - **HP:** 6000/6000
+  - **MP:** 1200/1200
+  - **STR:** 200
+  - **AGI:** 110
+  - **INT:** 250
+  - **DEX:** 140
+  - **VIT:** 220
+  - **Attaque de base:** 200
+  - **Drop (Phase 1):** Cristal de lave, Glace éternelle
+- **Phase 2:**
+  - **HP:** 1000/1000
+  - **MP:** 600/1200
+  - **STR:** 250
+  - **INT:** 300
+  - **Attaque de base:** 250
+  - **Drop (Phase 2):** Noyau élémentaire, Essence duale
+  - **Zone:** Event
 
 ---
 
@@ -1452,31 +1457,31 @@
 
 ### **Élu déchu par les ténèbres** (Lvl 60 Élite) 👑
 
-**Niveau 60 — Phase 1:**
-- **HP:** 6000/6000
-- **MP:** 1500/1500
-- **STR:** 4000
-- **AGI:** 160
-- **INT:** 200
-- **DEX:** 180
-- **VIT:** 220
-- **Attaque de base:** 4000 (fixe) + Repoussement si parade/blocage sans skill
-- **Lame sacrée purificatrice:** Dégâts lumière élevés
-- **Note:** Invulnérable sauf zone rose
-- **Drop (Phase 1):** Fragment de lumière, Armure déchue
-
-**Niveau 60 — Phase 2** (à 50% HP):
-- **HP:** 3000/6000
-- **MP:** 750/1500
-- **STR:** 4000
-- **INT:** 250
-- **Attaque de base:** 4000
-- **Compétences:**
-    - **Cercle de lumière:** Oneshot si dans zone (sauf skill survie)
-    - **Frappe enflammée:** 5000/coup
-    - **10 épées du commandement:** Invoque 10 épées flammes
-- **Drop (Phase 2):** Épée de l'élu déchu, Cœur corrompu, Couronne des ténèbres
-- **Zone:** Event
+**Niveau 60:**
+- **Phase 1:**
+  - **HP:** 6000/6000
+  - **MP:** 1500/1500
+  - **STR:** 4000
+  - **AGI:** 160
+  - **INT:** 200
+  - **DEX:** 180
+  - **VIT:** 220
+  - **Attaque de base:** 4000 (fixe) + Repoussement si parade/blocage sans skill
+  - **Lame sacrée purificatrice:** Dégâts lumière élevés
+  - **Note:** Invulnérable sauf zone rose
+  - **Drop (Phase 1):** Fragment de lumière, Armure déchue
+- **Phase 2** (à 50% HP):
+  - **HP:** 3000/6000
+  - **MP:** 750/1500
+  - **STR:** 4000
+  - **INT:** 250
+  - **Attaque de base:** 4000
+  - **Compétences:**
+      - **Cercle de lumière:** Oneshot si dans zone (sauf skill survie)
+      - **Frappe enflammée:** 5000/coup
+      - **10 épées du commandement:** Invoque 10 épées flammes
+  - **Drop (Phase 2):** Épée de l'élu déchu, Cœur corrompu, Couronne des ténèbres
+  - **Zone:** Event
 
 ---
 
